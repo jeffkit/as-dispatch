@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forward Service 管理台</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent-green: #3fb950;
+            --accent-blue: #58a6ff;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h1::before {
+            content: "⚡";
+            font-size: 28px;
+        }
+
+        .refresh-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: var(--border-color);
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-healthy {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--accent-green);
+        }
+
+        .status-unhealthy {
+            background: rgba(248, 81, 73, 0.15);
+            color: var(--accent-red);
+        }
+
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 36px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .config-item:last-child {
+            border-bottom: none;
+        }
+
+        .config-key {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .config-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--accent-blue);
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .rules-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .rules-table th,
+        .rules-table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .rules-table th {
+            background: var(--bg-tertiary);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .rules-table td {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+        }
+
+        .rules-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .rules-table tr:hover td {
+            background: var(--bg-tertiary);
+        }
+
+        .logs-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .log-entry {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-entry:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .log-time {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .log-status {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .log-status.success {
+            background: rgba(63, 185, 80, 0.15);
+            color: var(--accent-green);
+        }
+
+        .log-status.error {
+            background: rgba(248, 81, 73, 0.15);
+            color: var(--accent-red);
+        }
+
+        .log-status.pending {
+            background: rgba(210, 153, 34, 0.15);
+            color: var(--accent-orange);
+        }
+
+        .log-meta {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .log-meta span {
+            color: var(--text-secondary);
+        }
+
+        .log-content {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            padding: 12px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .log-response {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state::before {
+            content: "📭";
+            display: block;
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading::before {
+            content: "⏳";
+            display: inline-block;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        .error-banner {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--accent-purple);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Forward Service 管理台</h1>
+            <button class="refresh-btn" onclick="refreshAll()">🔄 刷新</button>
+        </header>
+
+        <div id="error-banner" class="error-banner"></div>
+
+        <div class="dashboard">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">服务状态</span>
+                    <span id="status-badge" class="status-badge status-healthy">加载中...</span>
+                </div>
+                <div id="service-info">
+                    <div class="config-item">
+                        <span class="config-key">版本</span>
+                        <span id="version" class="config-value">-</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-key">端口</span>
+                        <span id="port" class="config-value">-</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-key">超时时间</span>
+                        <span id="timeout" class="config-value">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">请求统计</span>
+                </div>
+                <div id="stats-total" class="metric-value">-</div>
+                <div class="metric-label">最近处理请求</div>
+                <div style="display: flex; gap: 20px; margin-top: 16px;">
+                    <div>
+                        <div id="stats-success" style="color: var(--accent-green); font-family: 'JetBrains Mono'; font-size: 20px; font-weight: 600;">-</div>
+                        <div class="metric-label">成功</div>
+                    </div>
+                    <div>
+                        <div id="stats-error" style="color: var(--accent-red); font-family: 'JetBrains Mono'; font-size: 20px; font-weight: 600;">-</div>
+                        <div class="metric-label">失败</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">默认配置</span>
+                </div>
+                <div class="config-item">
+                    <span class="config-key">默认 Bot Key</span>
+                    <span id="default-url" class="config-value" style="word-break: break-all;">-</span>
+                </div>
+                <div class="config-item">
+                    <span class="config-key">Bot 数量</span>
+                    <span id="rules-count" class="config-value">-</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">🤖 Bot 配置列表</h2>
+            <div id="bots-container">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">📜 最近请求日志</h2>
+            <div id="logs-container">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 配置 - 根据实际部署修改
+        const API_BASE = window.location.origin;
+
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (error) {
+                console.error(`Failed to fetch ${endpoint}:`, error);
+                throw error;
+            }
+        }
+
+        function showError(message) {
+            const banner = document.getElementById('error-banner');
+            banner.textContent = `⚠️ ${message}`;
+            banner.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error-banner').style.display = 'none';
+        }
+
+        async function loadStatus() {
+            try {
+                const data = await fetchData('/admin/status');
+                
+                // 更新状态徽章
+                const badge = document.getElementById('status-badge');
+                badge.textContent = '运行中';
+                badge.className = 'status-badge status-healthy';
+                
+                // 更新服务信息
+                document.getElementById('version').textContent = data.version || '-';
+                document.getElementById('port').textContent = data.config?.port || '-';
+                document.getElementById('timeout').textContent = `${data.config?.timeout || '-'}s`;
+                
+                // 更新统计
+                document.getElementById('stats-total').textContent = data.stats?.total_requests || '0';
+                document.getElementById('stats-success').textContent = data.stats?.recent_success || '0';
+                document.getElementById('stats-error').textContent = data.stats?.recent_error || '0';
+                
+                // 更新默认配置
+                document.getElementById('default-url').textContent = data.config?.default_bot_key?.slice(0, 16) + '...' || '未配置';
+                document.getElementById('rules-count').textContent = data.config?.bots_count || '0';
+                
+                hideError();
+            } catch (error) {
+                const badge = document.getElementById('status-badge');
+                badge.textContent = '离线';
+                badge.className = 'status-badge status-unhealthy';
+                showError('无法连接到服务');
+            }
+        }
+
+        async function loadBots() {
+            const container = document.getElementById('bots-container');
+            
+            try {
+                const data = await fetchData('/admin/config');
+                const bots = data.bots || {};
+                const defaultBotKey = data.default_bot_key;
+                
+                if (Object.keys(bots).length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            暂无配置的 Bot<br>
+                            <small style="color: var(--text-secondary);">请添加至少一个 Bot 配置</small>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = `
+                    <table class="rules-table">
+                        <thead>
+                            <tr>
+                                <th>Bot 名称</th>
+                                <th>Bot Key</th>
+                                <th>转发 URL</th>
+                                <th>访问模式</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                for (const [botKey, bot] of Object.entries(bots)) {
+                    const isDefault = botKey === defaultBotKey;
+                    const defaultTag = isDefault ? '<span class="tag" style="color: var(--accent-green);">默认</span> ' : '';
+                    const statusTag = bot.enabled ? 
+                        '<span class="tag" style="color: var(--accent-green);">启用</span>' : 
+                        '<span class="tag" style="color: var(--text-secondary);">禁用</span>';
+                    
+                    const accessMode = bot.access_control?.mode || 'allow_all';
+                    const accessText = {
+                        'allow_all': '允许所有',
+                        'whitelist': `白名单 (${bot.access_control?.whitelist?.length || 0})`,
+                        'blacklist': `黑名单 (${bot.access_control?.blacklist?.length || 0})`
+                    }[accessMode] || accessMode;
+                    
+                    const url = bot.target_url || bot.forward_config?.url_template || '-';
+                    const displayUrl = url.length > 50 ? url.slice(0, 47) + '...' : url;
+                    
+                    html += `
+                        <tr>
+                            <td style="font-weight: 600;">${defaultTag}${bot.name || '未命名'}</td>
+                            <td style="font-size: 11px; color: var(--text-secondary);">${botKey.slice(0, 16)}...</td>
+                            <td style="color: var(--accent-blue);" title="${url}">${displayUrl}</td>
+                            <td><span class="tag">${accessText}</span></td>
+                            <td>${statusTag}</td>
+                        </tr>
+                    `;
+                }
+                
+                html += '</tbody></table>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state" style="color: var(--accent-red);">
+                        加载 Bot 配置失败
+                    </div>
+                `;
+            }
+        }
+
+        async function loadLogs() {
+            const container = document.getElementById('logs-container');
+            
+            try {
+                const data = await fetchData('/admin/logs?limit=20');
+                const logs = data.logs || [];
+                
+                if (logs.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            暂无请求日志
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '<div class="logs-container">';
+                
+                for (const log of logs) {
+                    const statusClass = log.status === 'success' ? 'success' : (log.status === 'error' ? 'error' : 'pending');
+                    const time = new Date(log.timestamp).toLocaleString('zh-CN');
+                    
+                    html += `
+                        <div class="log-entry">
+                            <div class="log-header">
+                                <span class="log-time">${time}</span>
+                                <span class="log-status ${statusClass}">${log.status}</span>
+                            </div>
+                            <div class="log-meta">
+                                <span>👤 ${log.from_user}</span>
+                                <span>💬 ${log.chat_id?.slice(0, 16)}...</span>
+                                <span>⏱️ ${log.duration_ms}ms</span>
+                            </div>
+                            <div class="log-content">${log.content || '(empty)'}</div>
+                            ${log.response ? `<div class="log-response">📤 ${log.response.slice(0, 100)}${log.response.length > 100 ? '...' : ''}</div>` : ''}
+                            ${log.error ? `<div class="log-response" style="color: var(--accent-red);">❌ ${log.error}</div>` : ''}
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state" style="color: var(--accent-red);">
+                        加载日志失败
+                    </div>
+                `;
+            }
+        }
+
+        async function refreshAll() {
+            await Promise.all([
+                loadStatus(),
+                loadBots(),
+                loadLogs()
+            ]);
+        }
+
+        // 初始加载
+        refreshAll();
+        
+        // 每 10 秒自动刷新
+        setInterval(refreshAll, 10000);
+    </script>
+</body>
+</html>

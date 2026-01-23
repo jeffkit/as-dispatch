@@ -1,0 +1,40 @@
+[project]
+name = "as-dispatch"
+version = "2.0.0"
+description = "AgentStudio Dispatch - 企微机器人消息转发服务"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite>=0.19.0",
+    "aiomysql>=0.3.0",
+    "pymysql>=1.1.0",
+    "fly-pigeon>=1.0.9",
+    "tunely>=0.1.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["forward_service"]
+
+[tool.uv]
+extra-index-url = ["http://mirrors.tencent.com/repository/pypi/tencent_pypi/simple"]
+
+[tool.uv.sources]
+tunely = { path = "./tunely/python", editable = true }
+
+[tool.ruff]
+# E712: SQLAlchemy 需要使用 == True/False 来构建 SQL 查询表达式
+ignore = ["E712"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"

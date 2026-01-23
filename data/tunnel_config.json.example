@@ -1,0 +1,7 @@
+{
+  "ws_path": "/ws/tunnel",
+  "domain": "tunnel",
+  "ws_url": "ws://21.6.243.90:80/ws/tunnel",
+  "admin_api_key": null,
+  "instruction": "腾讯司内的 .tunnel 隧道域名仅用于企微接入的回调用，暂不支持直接通过隧道域名访问。如需在企微内接入，请在群内添加 Agent Studio 机器人，私信它获取接入指南，或详询 @kongjie"
+}
