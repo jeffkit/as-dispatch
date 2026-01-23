@@ -77,8 +77,7 @@ if __name__ == "__main__":
         # 默认路径
         default_paths = [
             Path(__file__).parent.parent / "data" / "forward_service.db",
-            Path("/root/projects/hil-mcp/data/forward_service.db"),
-            Path("/data/projects/hil-mcp/packages/forward-service/data/forward_service.db")
+            Path("/data/projects/as-dispatch/data/forward_service.db")
         ]
         
         db_path = None

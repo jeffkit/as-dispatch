@@ -309,7 +309,6 @@ CMD ["uv", "run", "python", "-m", "forward_service.app"]
 ## 相关项目
 
 - **Tunely**: https://github.com/jeffkit/tunely - WebSocket 隧道框架
-- **HIL-MCP**: https://git.woa.com/kongjie/tmp - Human-in-the-Loop MCP 服务
 
 ---
 
