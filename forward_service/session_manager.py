@@ -130,6 +130,25 @@ class SessionManager:
                     .values(is_active=False)
                 )
                 
+                # 如果没有传入 project_id，尝试从最近的会话继承
+                inherited_project_id = current_project_id
+                if inherited_project_id is None:
+                    # 查找该用户/chat/bot 下最近的会话
+                    last_session_result = await db.execute(
+                        select(UserSession)
+                        .where(and_(
+                            UserSession.user_id == user_id,
+                            UserSession.chat_id == chat_id,
+                            UserSession.bot_key == bot_key
+                        ))
+                        .order_by(UserSession.updated_at.desc())
+                        .limit(1)
+                    )
+                    last_session = last_session_result.scalar_one_or_none()
+                    if last_session and last_session.current_project_id:
+                        inherited_project_id = last_session.current_project_id
+                        logger.info(f"继承项目 ID: {inherited_project_id} (来自会话 {last_session.short_id})")
+                
                 # 创建新会话
                 new_session = UserSession(
                     user_id=user_id,
@@ -140,13 +159,13 @@ class SessionManager:
                     last_message=truncated_message,
                     message_count=1,
                     is_active=True,
-                    current_project_id=current_project_id
+                    current_project_id=inherited_project_id
                 )
                 db.add(new_session)
                 await db.commit()
                 await db.refresh(new_session)
                 
-                logger.info(f"新会话创建: user={user_id[:10]}, session={short_id}, project={current_project_id or 'None'}")
+                logger.info(f"新会话创建: user={user_id[:10]}, session={short_id}, project={inherited_project_id or 'None'}")
                 return new_session
     
     async def list_sessions(
