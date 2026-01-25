@@ -588,7 +588,6 @@ def is_project_command(message: str) -> bool:
         ADD_PROJECT_RE.match(message) or
         LIST_PROJECTS_RE.match(message) or
         USE_PROJECT_RE.match(message) or
-        SET_DEFAULT_RE.match(message) or
         REMOVE_PROJECT_RE.match(message) or
         CURRENT_PROJECT_RE.match(message)
     )
@@ -622,27 +621,21 @@ async def handle_project_command(
     elif LIST_PROJECTS_RE.match(message):
         return await handle_list_projects(bot_key, chat_id)
 
-    # /set-default
-    elif SET_DEFAULT_RE.match(message):
-        match = SET_DEFAULT_RE.match(message)
+    # /use
+    elif USE_PROJECT_RE.match(message):
+        match = USE_PROJECT_RE.match(message)
         project_id = match.group(1)
-        return await handle_set_default(bot_key, chat_id, project_id)
+        return await handle_use_project(bot_key, chat_id, project_id, user_id)
+
+    # /current-project or /current
+    elif CURRENT_PROJECT_RE.match(message):
+        return await handle_current_project(bot_key, chat_id)
 
     # /remove-project
     elif REMOVE_PROJECT_RE.match(message):
         match = REMOVE_PROJECT_RE.match(message)
         project_id = match.group(1)
         return await handle_remove_project(bot_key, chat_id, project_id)
-
-    # /current-project or /current
-    elif CURRENT_PROJECT_RE.match(message):
-        return await handle_current_project(bot_key, chat_id)
-
-    # /use
-    elif USE_PROJECT_RE.match(message):
-        match = USE_PROJECT_RE.match(message)
-        project_id = match.group(1)
-        return await handle_use_project(bot_key, chat_id, project_id, user_id)
 
     return False, "❌ 未知的项目命令"
 
