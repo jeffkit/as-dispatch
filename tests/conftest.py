@@ -120,9 +120,13 @@ def mock_agent_connectivity():
     """
     from unittest.mock import patch, AsyncMock
     
-    with patch(
-        'forward_service.routes.project_commands._test_agent_connectivity',
-        new_callable=AsyncMock,
-        return_value={"success": True, "latency": 50, "response": {"status": "ok"}}
-    ):
+    try:
+        with patch(
+            'forward_service.routes.project_commands._test_agent_connectivity',
+            new_callable=AsyncMock,
+            return_value={"success": True, "latency": 50, "response": {"status": "ok"}}
+        ):
+            yield
+    except (ImportError, AttributeError):
+        # 如果导入失败，跳过 mock（比如测试不需要这个模块）
         yield
