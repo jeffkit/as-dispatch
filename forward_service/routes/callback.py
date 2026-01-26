@@ -458,18 +458,14 @@ async def handle_callback(
             logger.info(f"会话已记录: session={result.session_id[:8]}, project={current_project_id or 'None'}...")
         
         # 发送结果给用户（使用正确的 bot_key）
-        # 在消息头部添加项目名和会话 ID
-        message_prefix = ""
-        if result.project_id or result.session_id:
-            project_tag = f"[{result.project_name or result.project_id}]" if result.project_id else "[默认]"
-            session_tag = f"#{result.session_id[:8]}" if result.session_id else ""
-            message_prefix = f"{project_tag} {session_tag}\n"
-        
+        # 使用消息分拆功能，传入 short_id 和 project_name
         send_result = await send_reply(
             chat_id=chat_id,
-            message=message_prefix + result.reply,
+            message=result.reply,
             msg_type=result.msg_type,
-            bot_key=bot.bot_key
+            bot_key=bot.bot_key,
+            short_id=result.session_id[:8] if result.session_id else None,
+            project_name=result.project_name or result.project_id if result.project_id else None
         )
         
         # 更新日志：成功或发送失败

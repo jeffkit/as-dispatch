@@ -26,8 +26,7 @@ ADD_PROJECT_RE = re.compile(
     r'^/(?:add-project|ap)\s+(\S+)\s+(\S+)'  # project_id, url
     r'(?:\s+--api-key\s+(\S+))?'       # optional: api_key
     r'(?:\s+--name\s+(.+?))?'          # optional: project_name
-    r'(?:\s+--timeout\s+(\d+))?'       # optional: timeout
-    r'(?:\s+--default)?$',             # optional: is_default flag
+    r'(?:\s+--timeout\s+(\d+))?$',     # optional: timeout
     re.IGNORECASE
 )
 
@@ -38,11 +37,6 @@ LIST_PROJECTS_RE = re.compile(
 
 USE_PROJECT_RE = re.compile(
     r'^/(?:use|u)\s+(\S+)$',
-    re.IGNORECASE
-)
-
-SET_DEFAULT_RE = re.compile(
-    r'^/(?:set-default|sd)\s+(\S+)$',
     re.IGNORECASE
 )
 
@@ -67,22 +61,21 @@ async def handle_add_project(
     """
     处理 /add-project 命令
 
-    用法: /add-project <project_id> <url> [--api-key <key>] [--name <name>] [--timeout <sec>] [--default]
+    用法: /add-project <project_id> <url> [--api-key <key>] [--name <name>] [--timeout <sec>]
 
     示例:
-    /add-project test https://api.test.com/webhook --api-key sk123 --default
+    /add-project test https://api.test.com/webhook --api-key sk123
     /add-project prod https://api.prod.com/webhook --name "生产环境"
     """
     match = ADD_PROJECT_RE.match(message.strip())
     if not match:
-        return False, "❌ 命令格式错误\n\n用法: /add-project <project_id> <url> [--api-key <key>] [--name <name>] [--timeout <sec>] [--default]"
+        return False, "❌ 命令格式错误\n\n用法: /add-project <project_id> <url> [--api-key <key>] [--name <name>] [--timeout <sec>]"
 
     project_id = match.group(1)
     url = match.group(2)
     api_key = match.group(3) if match.lastindex >= 3 else None
     project_name = match.group(4) if match.lastindex >= 4 else None
     timeout = int(match.group(5)) if match.lastindex >= 5 and match.group(5) else 300
-    is_default = match.group(0).endswith("--default") or False
 
     try:
         db_manager = get_db_manager()
@@ -140,7 +133,7 @@ async def handle_add_project(
                 api_key=api_key,
                 project_name=project_name,
                 timeout=timeout,
-                is_default=is_default,
+                is_default=False,  # 不再支持 --default 参数，通过 /use 设置
                 enabled=True
             )
 
@@ -159,9 +152,6 @@ async def handle_add_project(
             if project_name:
                 lines.append(f"📛 项目名称: {project_name}")
 
-            if is_default:
-                lines.append("⭐ 已设为默认项目")
-
             lines.append("")
             
             # 根据测试结果显示不同的消息
@@ -174,7 +164,7 @@ async def handle_add_project(
             else:
                 lines.append("✅ **连接测试成功！**")
                 lines.append("")
-                lines.append("💡 **下一步**：直接发送消息开始对话！")
+                lines.append("💡 **下一步**：使用 `/use {project_id}` 切换到此项目")
 
             return True, "\n".join(lines)
 
@@ -497,7 +487,7 @@ async def handle_use_project(
 
     用法: /use <project_id>
 
-    功能：切换到指定项目（更新当前会话的项目）
+    功能：切换到指定项目（自动设为默认项目）
     """
     try:
         db_manager = get_db_manager()
@@ -511,16 +501,17 @@ async def handle_use_project(
 
             if not project.enabled:
                 return False, f"❌ 项目 `{project_id}` 已禁用"
-
-        # 更新会话的项目 ID
-        if user_id:
-            from ..session_manager import get_session_manager
-            session_mgr = get_session_manager()
-            await session_mgr.set_session_project(user_id, chat_id, bot_key, project_id)
+            
+            # 将该项目设为默认项目（这样重置会话后仍然使用该项目）
+            success = await repo.set_default(bot_key, chat_id, project_id)
+            if not success:
+                return False, f"❌ 设置默认项目失败"
+            
+            await session.commit()
 
         # 构建成功消息
         lines = [
-            f"✅ 已切换到项目 `{project_id}`",
+            f"✅ 已切换到项目 `{project_id}` 并设为默认",
             f"📦 项目名称: {project.project_name or project_id}",
             f"🔗 转发目标: `{project.url_template}`",
         ]
@@ -532,7 +523,7 @@ async def handle_use_project(
             lines.append(f"⏱️ 超时: {project.timeout}秒")
 
         lines.append("")
-        lines.append("💡 现在可以开始对话了！")
+        lines.append("💡 此项目将在所有新会话中使用（包括 /r 重置后）")
 
         return True, "\n".join(lines)
 
@@ -548,21 +539,21 @@ async def handle_current_project(
     """
     处理 /current-project 或 /current 命令
 
-    显示用户当前使用的项目（默认项目）
+    显示用户当前使用的项目
     """
     try:
         db_manager = get_db_manager()
         async with db_manager.get_session() as session:
             repo = get_user_project_repository(session)
 
-            # 获取默认项目
+            # 获取当前项目（内部实现：查找默认项目）
             project = await repo.get_default_project(bot_key, chat_id)
 
             if not project:
-                return True, "📭 暂无默认项目\n\n💡 使用 `/add-project <id> <url> --default` 添加并设为默认"
+                return True, "📭 暂无项目\n\n💡 使用 `/add-project <id> <url>` 添加项目\n💡 使用 `/use <id>` 切换项目"
 
             lines = [
-                "📋 **当前项目**",
+                "📋 **当前使用的项目**",
                 f"📦 项目ID: `{project.project_id}`",
             ]
 
@@ -597,7 +588,6 @@ def is_project_command(message: str) -> bool:
         ADD_PROJECT_RE.match(message) or
         LIST_PROJECTS_RE.match(message) or
         USE_PROJECT_RE.match(message) or
-        SET_DEFAULT_RE.match(message) or
         REMOVE_PROJECT_RE.match(message) or
         CURRENT_PROJECT_RE.match(message)
     )
@@ -631,27 +621,21 @@ async def handle_project_command(
     elif LIST_PROJECTS_RE.match(message):
         return await handle_list_projects(bot_key, chat_id)
 
-    # /set-default
-    elif SET_DEFAULT_RE.match(message):
-        match = SET_DEFAULT_RE.match(message)
+    # /use
+    elif USE_PROJECT_RE.match(message):
+        match = USE_PROJECT_RE.match(message)
         project_id = match.group(1)
-        return await handle_set_default(bot_key, chat_id, project_id)
+        return await handle_use_project(bot_key, chat_id, project_id, user_id)
+
+    # /current-project or /current
+    elif CURRENT_PROJECT_RE.match(message):
+        return await handle_current_project(bot_key, chat_id)
 
     # /remove-project
     elif REMOVE_PROJECT_RE.match(message):
         match = REMOVE_PROJECT_RE.match(message)
         project_id = match.group(1)
         return await handle_remove_project(bot_key, chat_id, project_id)
-
-    # /current-project or /current
-    elif CURRENT_PROJECT_RE.match(message):
-        return await handle_current_project(bot_key, chat_id)
-
-    # /use
-    elif USE_PROJECT_RE.match(message):
-        match = USE_PROJECT_RE.match(message)
-        project_id = match.group(1)
-        return await handle_use_project(bot_key, chat_id, project_id, user_id)
 
     return False, "❌ 未知的项目命令"
 
@@ -671,12 +655,12 @@ def get_user_help() -> str:
 
 📦 **添加项目**
 ```
-/ap <项目ID> <URL> --api-key <API_KEY> [--default]
+/ap <项目ID> <URL> --api-key <API_KEY>
 ```
 
 示例:
 ```
-/ap test https://agentstudio.woa.com/a2a/xxx/messages --api-key sk-xxx --default
+/ap test https://agentstudio.woa.com/a2a/xxx/messages --api-key sk-xxx
 ```
 
 📖 **获取 URL 和 API-Key**
@@ -684,6 +668,7 @@ def get_user_help() -> str:
 
 💡 常用命令：
 • `/lp` - 查看我的项目
+• `/use <ID>` - 切换到指定项目
 • `/cp` - 当前项目
 • `/help` - 帮助
 
@@ -704,9 +689,8 @@ def get_regular_user_help() -> str:
 • `/lp` (`/projects`) - 查看我的项目
 • `/ap <ID> <URL> --api-key <KEY>` - 添加项目
 • `/u <ID>` (`/use`) - 切换项目
-• `/sd <ID>` (`/set-default`) - 设为默认
-• `/rp <ID>` (`/remove-project`) - 删除项目
 • `/cp` (`/current`) - 当前项目
+• `/rp <ID>` (`/remove-project`) - 删除项目
 
 💬 **会话管理**
 • `/s` - 列出会话
@@ -752,9 +736,8 @@ def get_admin_full_help() -> str:
 • `/lp` (`/projects`) - 查看我的项目
 • `/ap <ID> <URL> --api-key <KEY>` - 添加项目
 • `/u <ID>` (`/use`) - 切换项目
-• `/sd <ID>` (`/set-default`) - 设为默认
-• `/rp <ID>` (`/remove-project`) - 删除项目
 • `/cp` (`/current`) - 当前项目
+• `/rp <ID>` (`/remove-project`) - 删除项目
 
 💬 **会话管理**
 • `/s` - 列出会话
