@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse
 from .config import config
 from .database import database_lifespan, get_db_manager, get_database_url
 from .session_manager import init_session_manager
-from .routes import admin_router, bots_router, callback_router
+from .routes import admin_router, bots_router, callback_router, slack_router
 from .tunnel import tunnel_server, init_tunnel_server
 
 # 配置日志
@@ -96,6 +96,7 @@ app.add_middleware(
 app.include_router(admin_router)
 app.include_router(bots_router)
 app.include_router(callback_router)
+app.include_router(slack_router)  # Slack 集成路由
 app.include_router(tunnel_server.router)  # 隧道服务路由
 
 # 静态文件目录
