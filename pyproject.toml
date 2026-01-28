@@ -15,8 +15,12 @@ dependencies = [
     "aiomysql>=0.3.0",
     "pymysql>=1.1.0",
     "alembic>=1.13.0",
-    "fly-pigeon>=1.0.9",
     "tunely>=0.1.2",
+]
+
+[project.optional-dependencies]
+wecom = [
+    "fly-pigeon>=1.0.9",
 ]
 
 [build-system]
