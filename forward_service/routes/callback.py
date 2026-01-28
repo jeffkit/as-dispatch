@@ -364,7 +364,6 @@ async def handle_callback(
         # 检查是否有可用的转发目标（Bot 配置或用户项目）
         if not target_url:
             # 检查用户是否有绑定的项目
-            from ..database import get_db_manager
             from ..repository import get_user_project_repository
             db_manager = get_db_manager()
             async with db_manager.get_session() as session:
