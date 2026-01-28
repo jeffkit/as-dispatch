@@ -7,10 +7,14 @@
 - 消息格式化：添加会话标识头
 - 消息分拆：当消息超过 2K 时自动分拆
 - 每条分拆的消息都保留会话标识，方便用户回复
+
+注意: pigeon 模块为可选依赖，只在企微平台时需要
 """
 import logging
+from typing import TYPE_CHECKING
 
-from pigeon import Bot
+if TYPE_CHECKING:
+    from pigeon import Bot
 
 from .config import config
 from .message_splitter import (
@@ -43,6 +47,15 @@ def send_to_wecom(
     
     if not bot_key:
         raise ValueError("未配置 bot_key")
+    
+    # 懒加载 pigeon 模块（只在企微平台时需要）
+    try:
+        from pigeon import Bot
+    except ImportError:
+        raise ImportError(
+            "fly-pigeon 包未安装。企微功能需要安装: pip install fly-pigeon\n"
+            "或安装完整依赖: pip install 'as-dispatch[wecom]'"
+        )
     
     bot = Bot(bot_key=bot_key)
     
