@@ -25,6 +25,7 @@ from .config import config
 from .database import database_lifespan, get_db_manager, get_database_url
 from .session_manager import init_session_manager
 from .routes import admin_router, bots_router, callback_router, slack_router
+from .routes import discord as discord_router
 from .tunnel import tunnel_server, init_tunnel_server
 
 # 配置日志
@@ -40,6 +41,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    import asyncio
+    
     async with database_lifespan():
         # 初始化配置
         await config.initialize()
@@ -65,10 +68,31 @@ async def lifespan(app: FastAPI):
         logger.info(f"  Bot 数量: {len(config.bots)}")
 
         # 列出所有 Bot
+        discord_bots = []
         for bot_key, bot in config.bots.items():
-            logger.info(f"  - {bot.name} (key={bot_key[:10]}..., enabled={bot.enabled})")
+            logger.info(f"  - {bot.name} (key={bot_key[:10]}..., platform={bot.platform}, enabled={bot.enabled})")
+            # 收集需要启动的 Discord Bot
+            if bot.platform == "discord" and bot.enabled:
+                discord_bots.append(bot_key)
+        
+        # 启动 Discord Bot（后台任务）
+        discord_tasks = []
+        for bot_key in discord_bots:
+            task = asyncio.create_task(discord_router.start_discord_bot(bot_key))
+            discord_tasks.append(task)
+            logger.info(f"  🚀 启动 Discord Bot 任务: {bot_key[:10]}...")
 
         yield
+
+        # 关闭 Discord Bot
+        for bot_key, client in discord_router.discord_bots.items():
+            logger.info(f"  ⏹️  关闭 Discord Bot: {bot_key[:10]}...")
+            await client.close()
+        
+        # 取消 Discord Bot 任务
+        for task in discord_tasks:
+            if not task.done():
+                task.cancel()
 
         # 关闭隧道服务器
         await tunnel_server.close()
