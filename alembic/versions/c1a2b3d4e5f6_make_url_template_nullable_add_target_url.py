@@ -19,20 +19,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. 添加 target_url 字段到 chatbots 表
-    op.add_column('chatbots', sa.Column(
-        'target_url', 
-        sa.String(length=500), 
-        nullable=True,
-        comment='转发目标 URL (完整地址，推荐使用)'
-    ))
-    
-    # 2. 将 url_template 改为可空
-    op.alter_column('chatbots', 'url_template',
-        existing_type=sa.String(length=500),
-        nullable=True,
-        comment='URL 模板 (已废弃，保留用于数据迁移)'
-    )
+    # SQLite 兼容的方式：使用 batch_alter_table
+    with op.batch_alter_table('chatbots', schema=None) as batch_op:
+        # 1. 添加 target_url 字段
+        batch_op.add_column(sa.Column(
+            'target_url', 
+            sa.String(length=500), 
+            nullable=True,
+            comment='转发目标 URL (完整地址，推荐使用)'
+        ))
+        
+        # 2. 将 url_template 改为可空（batch mode 会重建表）
+        batch_op.alter_column('url_template',
+            existing_type=sa.String(length=500),
+            nullable=True,
+            comment='URL 模板 (已废弃，保留用于数据迁移)'
+        )
     
     # 3. 将现有数据从 url_template 复制到 target_url
     op.execute("""
@@ -43,12 +45,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # 回滚：删除 target_url 字段
-    op.drop_column('chatbots', 'target_url')
-    
-    # 将 url_template 改回非空（注意：如果有空数据会失败）
-    op.alter_column('chatbots', 'url_template',
-        existing_type=sa.String(length=500),
-        nullable=False,
-        comment='转发目标 URL 模板 (支持 {agent_id} 占位符)'
-    )
+    # SQLite 兼容的方式：使用 batch_alter_table
+    with op.batch_alter_table('chatbots', schema=None) as batch_op:
+        # 回滚：删除 target_url 字段
+        batch_op.drop_column('target_url')
+        
+        # 将 url_template 改回非空（注意：如果有空数据会失败）
+        batch_op.alter_column('url_template',
+            existing_type=sa.String(length=500),
+            nullable=False,
+            comment='转发目标 URL 模板 (支持 {agent_id} 占位符)'
+        )

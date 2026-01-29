@@ -26,7 +26,7 @@ from fastapi import Request
 from .config import config
 from .database import database_lifespan, get_db_manager, get_database_url
 from .session_manager import init_session_manager
-from .routes import admin_router, bots_router, callback_router, tunnel_proxy_router
+from .routes import admin_router, bots_router, callback_router, intelligent_router, tunnel_proxy_router
 from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
 
 # 配置日志
@@ -113,6 +113,7 @@ app.add_middleware(
 app.include_router(admin_router)
 app.include_router(bots_router)
 app.include_router(callback_router)
+app.include_router(intelligent_router)  # 智能机器人路由
 app.include_router(tunnel_server.router)  # 隧道服务路由
 app.include_router(tunnel_proxy_router)   # 隧道代理路由 (/t/{domain}/...)
 

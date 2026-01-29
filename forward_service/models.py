@@ -82,7 +82,7 @@ class Chatbot(Base):
         default="wecom",
         server_default="wecom",
         index=True,
-        comment="平台类型: wecom, slack, telegram, discord"
+        comment="平台类型: wecom, discord, slack, telegram, lark, wecom-intelligent"
     )
 
     # 转发配置 - 新字段 target_url (推荐使用)
@@ -124,7 +124,7 @@ class Chatbot(Base):
     platform_config: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
-        comment="平台特定配置（JSON 格式），例如 Slack: {bot_token, signing_secret}"
+        comment="平台特定配置（JSON 格式），例如 Slack: {bot_token, signing_secret}; 智能机器人: {support_stream, support_template_card}"
     )
 
     # 访问控制模式
