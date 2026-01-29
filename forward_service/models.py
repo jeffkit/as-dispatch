@@ -81,7 +81,7 @@ class Chatbot(Base):
         nullable=False,
         default="wecom",
         index=True,
-        comment="平台类型: wecom, discord, slack, wecom-intelligent"
+        comment="平台类型: wecom, wecom-intelligent, slack, discord, telegram"
     )
 
     # 转发配置 - 新字段 target_url (推荐使用)
@@ -123,7 +123,11 @@ class Chatbot(Base):
     platform_config: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
+<<<<<<< HEAD
         comment="平台特定配置（JSON 格式），例如智能机器人: {support_stream, support_template_card}"
+=======
+        comment="平台特定配置（JSON 格式），例如 Slack: {bot_token, signing_secret}"
+>>>>>>> feature/discord-integration
     )
 
     # 访问控制模式
