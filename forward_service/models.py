@@ -75,6 +75,15 @@ class Chatbot(Base):
         comment="Bot 描述"
     )
 
+    # 平台类型
+    platform: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="wecom",
+        index=True,
+        comment="平台类型: wecom, discord, slack, wecom-intelligent"
+    )
+
     # 转发配置 - 新字段 target_url (推荐使用)
     target_url: Mapped[Optional[str]] = mapped_column(
         String(500),
@@ -108,6 +117,13 @@ class Chatbot(Base):
         nullable=False,
         default=60,
         comment="转发请求超时时间 (秒)"
+    )
+
+    # 平台特定配置（JSON 格式）
+    platform_config: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="平台特定配置（JSON 格式），例如智能机器人: {support_stream, support_template_card}"
     )
 
     # 访问控制模式
@@ -155,10 +171,28 @@ class Chatbot(Base):
     __table_args__ = (
         Index("idx_chatbots_enabled", "enabled"),
         Index("idx_chatbots_bot_key", "bot_key"),
+        Index("idx_chatbots_platform", "platform"),
     )
 
     def __repr__(self) -> str:
-        return f"<Chatbot(id={self.id}, bot_key={self.bot_key[:10]}..., name={self.name})>"
+        return f"<Chatbot(id={self.id}, bot_key={self.bot_key[:10]}..., name={self.name}, platform={self.platform})>"
+
+    # ============== Platform Config Helpers ==============
+
+    def get_platform_config(self) -> dict:
+        """获取平台特定配置（解析 JSON）"""
+        if not self.platform_config:
+            return {}
+        try:
+            import json
+            return json.loads(self.platform_config)
+        except Exception:
+            return {}
+
+    def set_platform_config(self, config: dict) -> None:
+        """设置平台特定配置（转为 JSON）"""
+        import json
+        self.platform_config = json.dumps(config, ensure_ascii=False)
 
     # ============== Hybird Properties (兼容旧代码) ==============
 
