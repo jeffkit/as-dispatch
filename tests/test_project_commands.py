@@ -25,7 +25,6 @@ from forward_service.routes.project_commands import (
     ADD_PROJECT_RE,
     LIST_PROJECTS_RE,
     USE_PROJECT_RE,
-    SET_DEFAULT_RE,
     REMOVE_PROJECT_RE,
     CURRENT_PROJECT_RE,
 )

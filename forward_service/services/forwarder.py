@@ -54,7 +54,7 @@ async def get_forward_config_for_user(
     current_project_id: str | None = None
 ) -> ForwardConfig:
     """
-    获取用户的转发配置（优先级：用户项目 > Bot 默认配置）
+    获取用户的转发配置（优先级：会话项目 > 默认项目 > 智能选择 > Bot 配置）
 
     Args:
         bot_key: Bot Key
@@ -63,6 +63,9 @@ async def get_forward_config_for_user(
 
     Returns:
         ForwardConfig 对象
+
+    Raises:
+        ValueError: 当无法找到有效的转发配置时
     """
     try:
         db_manager = get_db_manager()
@@ -94,14 +97,45 @@ async def get_forward_config_for_user(
                     project_name=default_project.project_name
                 )
 
+            # 3. 智能选择：如果没有默认项目，尝试自动选择
+            all_projects = await project_repo.get_user_projects(bot_key, chat_id, enabled_only=True)
+            if all_projects:
+                # 如果只有一个项目，自动使用
+                if len(all_projects) == 1:
+                    auto_project = all_projects[0]
+                    logger.info(f"自动使用唯一项目: {auto_project.project_id}")
+                    return ForwardConfig(
+                        target_url=auto_project.url_template,
+                        api_key=auto_project.api_key,
+                        timeout=auto_project.timeout,
+                        project_id=auto_project.project_id,
+                        project_name=auto_project.project_name
+                    )
+                else:
+                    # 多个项目：使用第一个（Repository 按 is_default DESC, created_at ASC 排序）
+                    first_project = all_projects[0]
+                    logger.info(f"自动使用第一个项目: {first_project.project_id}")
+                    return ForwardConfig(
+                        target_url=first_project.url_template,
+                        api_key=first_project.api_key,
+                        timeout=first_project.timeout,
+                        project_id=first_project.project_id,
+                        project_name=first_project.project_name
+                    )
+
     except Exception as e:
         logger.error(f"获取用户项目配置失败: {e}，回退到 Bot 配置")
 
-    # 3. 兜底：使用 Bot 级别配置
+    # 4. 兜底：使用 Bot 级别配置
     bot = await config.get_bot_or_default_from_db(bot_key)
     if not bot:
         logger.warning(f"未找到 Bot 配置: bot_key={bot_key}")
-        raise ValueError(f"未找到 Bot 配置: bot_key={bot_key}")
+        raise ValueError(f"未找到 Bot 配置且用户无可用项目")
+
+    # 如果 Bot 也没有 URL，抛出更友好的异常
+    if not bot.forward_config.target_url:
+        logger.warning(f"Bot {bot.name} 未配置转发 URL，且用户无可用项目")
+        raise ValueError(f"Bot 未配置转发 URL，且用户无可用项目")
 
     logger.info(f"使用 Bot 默认配置: {bot.name}")
     return ForwardConfig(

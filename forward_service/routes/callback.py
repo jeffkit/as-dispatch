@@ -418,12 +418,62 @@ async def handle_callback(
                 session_id=current_session_id,
                 current_project_id=current_project_id
             )
+        except ValueError as e:
+            # 捕获配置错误（forwarder 抛出的 ValueError）
+            error_msg = str(e)
+            remove_pending_request(request_id)
+
+            if "无可用项目" in error_msg or "未配置转发 URL" in error_msg:
+                # 检查用户是否有项目但没有设置默认
+                from ..repository import get_user_project_repository
+                db_manager = get_db_manager()
+                async with db_manager.get_session() as session:
+                    project_repo = get_user_project_repository(session)
+                    user_projects = await project_repo.get_user_projects(bot.bot_key, chat_id)
+
+                    if user_projects:
+                        # 有项目但没有设置默认，引导用户使用 /use
+                        project_list = ", ".join([f"`{p.project_id}`" for p in user_projects[:3]])
+                        more_hint = f" 等 {len(user_projects)} 个项目" if len(user_projects) > 3 else ""
+
+                        help_msg = (
+                            f"💡 **检测到你有以下项目**\n\n"
+                            f"项目: {project_list}{more_hint}\n\n"
+                            f"请使用 `/use <项目ID>` 切换到要使用的项目\n\n"
+                            f"示例: `/use {user_projects[0].project_id}`"
+                        )
+                    else:
+                        # 没有项目，显示帮助信息
+                        from .project_commands import get_user_help
+                        help_msg = get_user_help()
+
+                    await send_reply(
+                        chat_id=chat_id,
+                        message=help_msg,
+                        msg_type="text",
+                        bot_key=bot.bot_key
+                    )
+
+                    # 记录日志
+                    duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                    if log_id:
+                        await update_request_log(
+                            log_id=log_id,
+                            status="error",
+                            error=f"配置错误: {error_msg}",
+                            duration_ms=duration_ms
+                        )
+
+                    return {"errcode": 0, "errmsg": "no project configured"}
+
+            # 其他 ValueError，重新抛出
+            raise
         finally:
             # 无论成功失败，都从 pending 列表移除
             remove_pending_request(request_id)
-        
+
         duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-        
+
         if not result:
             # 更新日志：转发失败
             if log_id:

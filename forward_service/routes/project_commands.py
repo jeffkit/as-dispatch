@@ -87,14 +87,18 @@ async def handle_add_project(
             if existing:
                 return False, f"❌ 项目 `{project_id}` 已存在\n\n💡 使用 `/projects` 或 `/lp` 查看已有项目\n💡 使用 `/rp {project_id}` 可删除后重新添加"
 
-            # 2. 测试连通性（隧道 URL 可跳过严格测试）
+            # 2. 检查用户是否已有其他项目（用于判断是否为首个项目）
+            existing_projects = await repo.get_user_projects(bot_key, chat_id, enabled_only=True)
+            is_first_project = len(existing_projects) == 0
+
+            # 3. 测试连通性（隧道 URL 可跳过严格测试）
             from ..tunnel import is_tunnel_url
             test_result = await _test_agent_connectivity(url, api_key)
-            
+
             # 连接失败时处理
             is_tunnel = is_tunnel_url(url)
             tunnel_warning = None  # 用于隧道模式的警告信息
-            
+
             if not test_result["success"]:
                 # 对于隧道 URL，如果隧道已连接但 Agent 返回非 2xx 响应，仍然保存（用户可能需要调试）
                 if is_tunnel and "隧道未连接" not in test_result.get("error", ""):
@@ -109,11 +113,11 @@ async def handle_add_project(
                         "",
                         f"🔗 URL: `{url}`",
                     ]
-                    
+
                     if api_key:
                         masked_key = api_key[:4] + "***" + api_key[-4:] if len(api_key) > 8 else "***"
                         lines.append(f"🔐 API Key: `{masked_key}`")
-                    
+
                     lines.append("")
                     lines.append(f"❌ 错误: {test_result['error']}")
                     if test_result.get('response'):
@@ -121,10 +125,11 @@ async def handle_add_project(
                     lines.append("")
                     lines.append("💡 请检查 URL 和 API Key 是否正确后重试")
                     lines.append("📖 文档: https://agentstudio.woa.com/docs/qywx-bot")
-                    
+
                     return False, "\n".join(lines)
 
-            # 3. 创建项目配置（测试成功或隧道模式允许保存）
+            # 4. 创建项目配置（测试成功或隧道模式允许保存）
+            # 如果是第一个项目，自动设为默认
             _project = await repo.create(
                 bot_key=bot_key,
                 chat_id=chat_id,
@@ -133,7 +138,7 @@ async def handle_add_project(
                 api_key=api_key,
                 project_name=project_name,
                 timeout=timeout,
-                is_default=False,  # 不再支持 --default 参数，通过 /use 设置
+                is_default=is_first_project,  # 首个项目自动设为默认
                 enabled=True
             )
 
@@ -153,8 +158,8 @@ async def handle_add_project(
                 lines.append(f"📛 项目名称: {project_name}")
 
             lines.append("")
-            
-            # 根据测试结果显示不同的消息
+
+            # 根据测试结果和是否为首个项目显示不同的消息
             if tunnel_warning:
                 lines.append("⚠️ **隧道已连接，但 Agent 返回错误**")
                 lines.append("")
@@ -164,7 +169,13 @@ async def handle_add_project(
             else:
                 lines.append("✅ **连接测试成功！**")
                 lines.append("")
-                lines.append("💡 **下一步**：使用 `/use {project_id}` 切换到此项目")
+
+                if is_first_project:
+                    lines.append("⭐ **已自动设为默认项目**")
+                    lines.append("")
+                    lines.append("💡 现在可以直接开始对话了！")
+                else:
+                    lines.append("💡 **下一步**：使用 `/use {project_id}` 切换到此项目")
 
             return True, "\n".join(lines)
 
@@ -176,38 +187,41 @@ async def handle_add_project(
 async def _test_agent_connectivity(url: str, api_key: str | None) -> dict:
     """
     测试 Agent 连通性
-    
+
     发送一个测试消息，检查是否能正常响应
     支持隧道 URL (.tunnel 后缀)
-    
+
     Returns:
         {"success": bool, "error": str?, "response": str?}
     """
     import httpx
     from ..tunnel import is_tunnel_url, extract_tunnel_domain, extract_tunnel_path, get_tunnel_server
-    
+
+    # 连通性测试超时时间（秒）- 从15秒增加到60秒，适配冷启动和慢速 Agent
+    CONNECTIVITY_TEST_TIMEOUT = 60.0
+
     try:
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        
+
         # 检查是否是隧道 URL
         if is_tunnel_url(url):
             tunnel_domain = extract_tunnel_domain(url)
             path = extract_tunnel_path(url)
-            
+
             if not tunnel_domain:
                 return {"success": False, "error": "隧道 URL 格式错误"}
-            
+
             tunnel_server = get_tunnel_server()
-            
+
             # 检查隧道是否在线
             if not tunnel_server.manager.is_connected(tunnel_domain):
                 return {
-                    "success": False, 
+                    "success": False,
                     "error": f"隧道未连接: {tunnel_domain}.tunnel\n💡 请先运行 `tunely connect` 建立连接"
                 }
-            
+
             # 通过隧道转发测试请求
             response = await tunnel_server.forward(
                 domain=tunnel_domain,
@@ -215,7 +229,7 @@ async def _test_agent_connectivity(url: str, api_key: str | None) -> dict:
                 path=path,
                 headers=headers,
                 body={"message": "ping"},
-                timeout=15.0,
+                timeout=CONNECTIVITY_TEST_TIMEOUT,
             )
             
             if response.error:
@@ -231,13 +245,13 @@ async def _test_agent_connectivity(url: str, api_key: str | None) -> dict:
                 }
         
         # 普通 HTTP 请求
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=CONNECTIVITY_TEST_TIMEOUT) as client:
             response = await client.post(
                 url,
                 json={"message": "ping"},
                 headers=headers
             )
-            
+
             if response.status_code == 200:
                 return {"success": True}
             else:
@@ -247,7 +261,7 @@ async def _test_agent_connectivity(url: str, api_key: str | None) -> dict:
                     "response": response.text
                 }
     except httpx.TimeoutException:
-        return {"success": False, "error": "连接超时 (15秒)"}
+        return {"success": False, "error": f"连接超时 ({int(CONNECTIVITY_TEST_TIMEOUT)}秒)"}
     except httpx.ConnectError as e:
         return {"success": False, "error": f"无法连接: {str(e)}"}
     except Exception as e:
