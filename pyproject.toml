@@ -17,6 +17,7 @@ dependencies = [
     "alembic>=1.13.0",
     "tunely>=0.1.2",
     "discord-py>=2.3.0",
+    "pycryptodome>=3.20.0",
 ]
 
 [project.optional-dependencies]

@@ -8,6 +8,8 @@ from .bots import router as bots_router
 from .callback import router as callback_router
 from .intelligent import router as intelligent_router
 from .slack import router as slack_router
+from .telegram import router as telegram_router
+from .lark import router as lark_router
 from .tunnel_proxy import router as tunnel_proxy_router
 
 __all__ = [
@@ -16,5 +18,7 @@ __all__ = [
     "callback_router",
     "intelligent_router",
     "slack_router",
+    "telegram_router",
+    "lark_router",
     "tunnel_proxy_router",
 ]
