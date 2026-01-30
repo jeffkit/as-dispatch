@@ -1,18 +1,30 @@
 # AgentStudio Dispatch
 
-企业微信消息转发服务 + WebSocket 隧道管理
+**多平台 IM 机器人消息转发服务 + WebSocket 隧道管理**
+
+将各大 IM 平台的机器人消息统一转发到 AgentStudio 进行处理，实现 AI Agent 的多平台接入。
 
 ## 功能特性
 
+### 多平台支持
+
+- 🌐 **统一接口** - 支持多个 IM 平台，统一的消息处理流程
+- 📱 **企业微信** - 普通机器人 + 智能机器人（XML 流式响应）
+- 💬 **Telegram** - Bot API 集成，支持 Markdown 和内联按钮
+- 🚀 **飞书 (Lark)** - 文本/富文本/卡片消息，事件加解密
+- 💼 **Slack** - Workspace 集成
+- 🎮 **Discord** - Bot 集成
+- ⏳ **更多平台** - 钉钉、WhatsApp、Teams、Line (计划中)
+
 ### 消息转发服务
 
-- 📨 **双向消息转发** - 企微消息转发到外部服务，外部服务回复自动发送到企微
-- 🤖 **多机器人管理** - 支持配置多个企微机器人
+- 📨 **双向消息转发** - IM 消息转发到 AgentStudio，响应自动回复到 IM
+- 🤖 **多机器人管理** - 支持配置多个不同平台的机器人
 - 🔐 **访问控制** - 黑白名单机制，精确控制访问权限
 - 📊 **请求日志** - 完整记录转发历史，便于追踪和调试
 - ⚙️ **灵活配置** - JSON 文件或数据库存储，支持热更新
 - 🎯 **项目管理** - 用户可创建项目，配置独立的转发规则
-- 💬 **斜杠命令** - 通过企微消息直接管理 Bot 和项目
+- 💬 **会话管理** - 多会话切换，支持 Slash 命令
 
 ### WebSocket 隧道
 
@@ -39,6 +51,28 @@ as-dispatch/
 ├── alembic/             # 数据库迁移
 └── scripts/             # 工具脚本
 ```
+
+---
+
+## 平台集成指南
+
+AS-Dispatch 支持多个主流 IM 平台，每个平台都有详细的集成文档：
+
+| 平台 | 文档 | 功能特性 | 状态 |
+|------|------|---------|------|
+| **企业微信** | [配置指南](#配置方式) | 文本、卡片、流式消息 | ✅ 生产 |
+| **Telegram** | [TELEGRAM_INTEGRATION.md](./TELEGRAM_INTEGRATION.md) | 文本、Markdown、内联按钮 | ✅ 就绪 |
+| **飞书 (Lark)** | [LARK_INTEGRATION.md](./LARK_INTEGRATION.md) | 文本、富文本、卡片、加密 | ✅ 就绪 |
+| **Slack** | [SLACK_INTEGRATION.md](./SLACK_INTEGRATION.md) | 消息、Block Kit | ✅ 就绪 |
+| **Discord** | [DISCORD_INTEGRATION.md](./DISCORD_INTEGRATION.md) | Bot 集成 | ✅ 就绪 |
+| **钉钉** | [MULTI_PLATFORM_ROADMAP.md](./MULTI_PLATFORM_ROADMAP.md) | Webhook 模式 | 🚧 计划中 |
+| **WhatsApp** | [MULTI_PLATFORM_ROADMAP.md](./MULTI_PLATFORM_ROADMAP.md) | Business API | 🚧 计划中 |
+| **Teams** | [MULTI_PLATFORM_ROADMAP.md](./MULTI_PLATFORM_ROADMAP.md) | Bot Framework | 🚧 计划中 |
+| **Line** | [MULTI_PLATFORM_ROADMAP.md](./MULTI_PLATFORM_ROADMAP.md) | Messaging API | 🚧 计划中 |
+
+**快速链接**:
+- 📖 [多平台接入路线图](./MULTI_PLATFORM_ROADMAP.md) - 完整的多平台支持规划
+- 📊 [智能机器人分析报告](./INTELLIGENT_BOT_ANALYSIS.md) - 企微智能机器人技术分析
 
 ---
 
@@ -86,16 +120,38 @@ FORWARD_PORT=8084 uv run python -m forward_service.app
 
 ```json
 {
-  "default_bot_key": "bot1",
+  "default_bot_key": "wecom-bot",
   "bots": {
-    "bot1": {
-      "bot_key": "bot1",
-      "name": "测试机器人",
-      "forward_config": {
-        "url_template": "https://api.example.com/chat"
-      },
+    "wecom-bot": {
+      "bot_key": "wecom-bot",
+      "name": "企微机器人",
+      "platform": "wecom",
+      "target_url": "http://localhost:4936/a2a/agent-id/messages",
       "access_mode": "whitelist",
       "whitelist": ["user1", "user2"],
+      "enabled": true
+    },
+    "telegram-bot": {
+      "bot_key": "telegram-bot",
+      "name": "Telegram Bot",
+      "platform": "telegram",
+      "platform_config": {
+        "bot_token": "123456789:ABCdefGHI...",
+        "secret_token": "your-secret"
+      },
+      "target_url": "http://localhost:4936/a2a/agent-id/messages",
+      "enabled": true
+    },
+    "lark-bot": {
+      "bot_key": "lark-bot",
+      "name": "飞书 Bot",
+      "platform": "lark",
+      "platform_config": {
+        "app_id": "cli_abc123",
+        "app_secret": "your-secret",
+        "encrypt_key": "your-encrypt-key"
+      },
+      "target_url": "http://localhost:4936/a2a/agent-id/messages",
       "enabled": true
     }
   }
@@ -123,9 +179,17 @@ uv run python -m forward_service.app
 
 ---
 
-## 斜杠命令
+## Slash 命令
 
-用户可以通过企微消息直接管理：
+用户可以通过 IM 消息直接管理（支持企微、Telegram、飞书等）：
+
+### 会话管理
+
+```
+/sess 或 /s              - 列出会话
+/reset 或 /r             - 重置会话
+/change <id> 或 /c <id>  - 切换会话
+```
 
 ### Bot 管理（需要管理员权限）
 
