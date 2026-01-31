@@ -1,7 +1,7 @@
 """
 消息发送模块
 
-使用 fly-pigeon 库发送消息到企业微信
+使用 wecom_bot 模块发送消息到企业微信
 
 功能：
 - 消息格式化：添加会话标识头
@@ -10,7 +10,7 @@
 """
 import logging
 
-from pigeon import Bot
+from .wecom_bot import Bot
 
 from .config import config
 from .message_splitter import (
@@ -70,7 +70,7 @@ def send_to_wecom(
         elif isinstance(result, dict):
             response_data = result
         
-        logger.info(f"fly-pigeon 响应: status={result}, data={response_data}")
+        logger.info(f"wecom_bot 响应: status={result}, data={response_data}")
         
         # 检查是否真的发送成功
         if response_data:
@@ -82,7 +82,7 @@ def send_to_wecom(
         return response_data or {"errcode": 0, "errmsg": "ok"}
         
     except Exception as e:
-        logger.error(f"fly-pigeon 发送失败: {e}", exc_info=True)
+        logger.error(f"wecom_bot 发送失败: {e}", exc_info=True)
         raise
 
 
