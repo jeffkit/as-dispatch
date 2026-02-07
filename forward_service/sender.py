@@ -26,6 +26,7 @@ def send_to_wecom(
     chat_id: str,
     msg_type: str = "text",
     bot_key: str | None = None,
+    mentioned_list: list[str] | None = None,
 ) -> dict:
     """
     发送消息到企业微信
@@ -35,6 +36,7 @@ def send_to_wecom(
         chat_id: 群/私聊 ID
         msg_type: 消息类型 (text / markdown)
         bot_key: 机器人 Key（不传则使用配置）
+        mentioned_list: @提醒的用户 ID 列表（仅 text 消息支持）
     
     Returns:
         发送结果
@@ -46,7 +48,7 @@ def send_to_wecom(
     
     bot = Bot(bot_key=bot_key)
     
-    logger.info(f"发送消息到企微: chat_id={chat_id}, msg_type={msg_type}, message={message[:50]}...")
+    logger.info(f"发送消息到企微: chat_id={chat_id}, msg_type={msg_type}, mentioned={mentioned_list}, message={message[:50]}...")
     
     try:
         if msg_type == "markdown":
@@ -55,10 +57,10 @@ def send_to_wecom(
                 msg_content=message,
             )
         else:
-            result = bot.text(
-                chat_id=chat_id,
-                msg_content=message,
-            )
+            kwargs = {"chat_id": chat_id, "msg_content": message}
+            if mentioned_list:
+                kwargs["mentioned_list"] = mentioned_list
+            result = bot.text(**kwargs)
         
         # 记录响应内容
         response_data = None
@@ -92,7 +94,8 @@ async def send_reply(
     msg_type: str = "text",
     bot_key: str | None = None,
     short_id: str | None = None,
-    project_name: str | None = None
+    project_name: str | None = None,
+    mentioned_list: list[str] | None = None,
 ) -> dict:
     """
     发送回复消息给用户
@@ -106,6 +109,7 @@ async def send_reply(
         bot_key: 机器人 Key（指定使用哪个机器人发送消息）
         short_id: 会话短 ID（用于消息头部标识）
         project_name: 项目名称（显示在消息头部）
+        mentioned_list: @提醒的用户 ID 列表（群聊场景下使用）
     
     Returns:
         发送结果 {"success": bool, "error": str | None, "parts_sent": int | None}
@@ -120,7 +124,8 @@ async def send_reply(
                 msg_type=msg_type,
                 bot_key=bot_key,
                 short_id=short_id,
-                project_name=project_name
+                project_name=project_name,
+                mentioned_list=mentioned_list,
             )
         
         # 不需要分拆，使用原有逻辑
@@ -128,7 +133,8 @@ async def send_reply(
             message=message,
             chat_id=chat_id,
             msg_type=msg_type,
-            bot_key=bot_key
+            bot_key=bot_key,
+            mentioned_list=mentioned_list,
         )
         
         if isinstance(result, dict) and result.get("errcode", 0) != 0:
@@ -150,7 +156,8 @@ async def _send_message_split(
     msg_type: str,
     bot_key: str | None,
     short_id: str,
-    project_name: str | None
+    project_name: str | None,
+    mentioned_list: list[str] | None = None,
 ) -> dict:
     """
     分拆消息并发送
@@ -162,6 +169,7 @@ async def _send_message_split(
         bot_key: 机器人 Key
         short_id: 会话短 ID
         project_name: 项目名称
+        mentioned_list: @提醒的用户 ID 列表（群聊场景下使用）
     
     Returns:
         {"success": bool, "parts_sent": int, "error": str | None}
@@ -182,7 +190,8 @@ async def _send_message_split(
                 message=split_msg.content,
                 chat_id=chat_id,
                 msg_type=msg_type,
-                bot_key=bot_key
+                bot_key=bot_key,
+                mentioned_list=mentioned_list,
             )
             
             # 检查发送结果

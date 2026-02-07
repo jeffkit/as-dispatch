@@ -87,6 +87,9 @@ async def handle_callback(
         
         logger.info(f"收到企微回调: chat_id={chat_id}, chat_type={chat_type}, msg_type={msg_type}, from={from_user_name}")
         
+        # 群聊场景下，回复时 @发送者
+        mentioned_list = [from_user_id] if chat_type == "group" else None
+        
         # 忽略某些事件类型
         if msg_type in ("event", "enter_chat"):
             logger.info(f"忽略事件类型: {msg_type}")
@@ -119,7 +122,8 @@ async def handle_callback(
             await send_reply(
                 chat_id=chat_id,
                 message="⚠️ Bot 配置错误，请联系管理员",
-                msg_type="text"
+                msg_type="text",
+                mentioned_list=mentioned_list,
             )
             return {"errcode": 0, "errmsg": "no bot config"}
         
@@ -144,7 +148,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message=f"⚠️ {reason}\n\n默认 Bot 也无法访问: {default_reason}",
                             msg_type="text",
-                            bot_key=default_bot.bot_key
+                            bot_key=default_bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                         return {"errcode": 0, "errmsg": "access denied"}
                 else:
@@ -152,7 +157,8 @@ async def handle_callback(
                         chat_id=chat_id,
                         message=f"⚠️ {reason}",
                         msg_type="text",
-                        bot_key=bot.bot_key
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
                     )
                     return {"errcode": 0, "errmsg": "access denied"}
             else:
@@ -160,7 +166,8 @@ async def handle_callback(
                     chat_id=chat_id,
                     message=f"⚠️ {reason}",
                     msg_type="text",
-                    bot_key=bot.bot_key
+                    bot_key=bot.bot_key,
+                    mentioned_list=mentioned_list,
                 )
                 return {"errcode": 0, "errmsg": "access denied"}
         
@@ -178,7 +185,8 @@ async def handle_callback(
                 chat_id=chat_id,
                 message=response_msg,
                 msg_type="text",
-                bot_key=bot.bot_key
+                bot_key=bot.bot_key,
+                mentioned_list=mentioned_list,
             )
             return {"errcode": 0, "errmsg": "project command handled"}
         
@@ -189,7 +197,8 @@ async def handle_callback(
                 chat_id=chat_id,
                 message=response_msg,
                 msg_type="text",
-                bot_key=bot.bot_key
+                bot_key=bot.bot_key,
+                mentioned_list=mentioned_list,
             )
             return {"errcode": 0, "errmsg": "tunnel command handled"}
         
@@ -211,7 +220,8 @@ async def handle_callback(
                         chat_id=chat_id,
                         message=reply_msg,
                         msg_type="text",
-                        bot_key=bot.bot_key
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
                     )
                     return {"errcode": 0, "errmsg": "slash command handled"}
                 
@@ -223,7 +233,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message="✅ 会话已重置，下次发送消息将开始新对话",
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                     else:
                         # 没有活跃会话也算成功 - 下次发消息会自动创建新会话
@@ -231,7 +242,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message="✅ 已准备好开始新对话，请发送消息",
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                     return {"errcode": 0, "errmsg": "slash command handled"}
                 
@@ -243,7 +255,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message=f"❌ 未找到会话 `{cmd_arg}`\n使用 `/s` 查看可用会话",
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                         return {"errcode": 0, "errmsg": "slash command handled"}
                     
@@ -256,7 +269,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message=f"✅ 已切换到会话 `{target_session.short_id}`\n最后消息: {target_session.last_message or '(无)'}",
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                         return {"errcode": 0, "errmsg": "slash command handled"}
                 
@@ -268,7 +282,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message="⚠️ 此命令仅限管理员使用",
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                         return {"errcode": 0, "errmsg": "permission denied"}
                     
@@ -279,7 +294,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message=f"🟢 pong! (延迟: {duration_ms}ms)",
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                     else:
                         # 详细状态信息
@@ -288,7 +304,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message=status_msg,
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                     return {"errcode": 0, "errmsg": "slash command handled"}
                 
@@ -304,7 +321,8 @@ async def handle_callback(
                         chat_id=chat_id,
                         message=response_msg,
                         msg_type="text",
-                        bot_key=bot.bot_key
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
                     )
                     return {"errcode": 0, "errmsg": "slash command handled"}
                 
@@ -316,7 +334,8 @@ async def handle_callback(
                             chat_id=chat_id,
                             message="⚠️ 此命令仅限管理员使用",
                             msg_type="text",
-                            bot_key=bot.bot_key
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
                         )
                         return {"errcode": 0, "errmsg": "permission denied"}
                     
@@ -346,7 +365,8 @@ async def handle_callback(
                         chat_id=chat_id,
                         message=response_msg,
                         msg_type="text",
-                        bot_key=bot.bot_key
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
                     )
                     return {"errcode": 0, "errmsg": "slash command handled"}
         
@@ -375,7 +395,8 @@ async def handle_callback(
                         chat_id=chat_id,
                         message=get_user_help(),
                         msg_type="text",
-                        bot_key=bot.bot_key
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
                     )
                     return {"errcode": 0, "errmsg": "no target configured, help shown"}
         
@@ -488,7 +509,8 @@ async def handle_callback(
                 chat_id=chat_id,
                 message="⚠️ 处理请求时发生错误，请稍后重试",
                 msg_type="text",
-                bot_key=bot.bot_key
+                bot_key=bot.bot_key,
+                mentioned_list=mentioned_list,
             )
             return {"errcode": 0, "errmsg": "forward failed"}
         
@@ -514,7 +536,8 @@ async def handle_callback(
             msg_type=result.msg_type,
             bot_key=bot.bot_key,
             short_id=result.session_id[:8] if result.session_id else None,
-            project_name=result.project_name or result.project_id if result.project_id else None
+            project_name=result.project_name or result.project_id if result.project_id else None,
+            mentioned_list=mentioned_list,
         )
         
         # 更新日志：成功或发送失败
