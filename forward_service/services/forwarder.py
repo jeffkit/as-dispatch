@@ -7,12 +7,15 @@
 1. 直连模式：直接 HTTP POST 到目标 URL
 2. 隧道模式：通过 WebSocket 隧道转发到内网 Agent
 """
+import base64
 import json as json_module
 import logging
+import mimetypes
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 import httpx
 
@@ -46,6 +49,54 @@ class ForwardConfig:
     def get_url(self) -> str:
         """获取完整 URL"""
         return self.target_url
+
+
+async def download_images_as_base64(
+    image_urls: list[str],
+) -> list[dict]:
+    """
+    下载图片并转为 base64 编码
+
+    Args:
+        image_urls: 图片 URL 列表
+
+    Returns:
+        [{"data": "base64...", "mediaType": "image/jpeg"}, ...]
+    """
+    if not image_urls:
+        return []
+
+    images = []
+    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)) as client:
+        for url in image_urls:
+            try:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    logger.warning(f"下载图片失败: url={url}, status={resp.status_code}")
+                    continue
+
+                # 检测 MIME 类型
+                content_type = resp.headers.get("content-type", "")
+                if "jpeg" in content_type or "jpg" in content_type:
+                    media_type = "image/jpeg"
+                elif "png" in content_type:
+                    media_type = "image/png"
+                elif "gif" in content_type:
+                    media_type = "image/gif"
+                elif "webp" in content_type:
+                    media_type = "image/webp"
+                else:
+                    # 从 URL 路径猜测
+                    path = urlparse(url).path.lower()
+                    guessed, _ = mimetypes.guess_type(path)
+                    media_type = guessed if guessed and guessed.startswith("image/") else "image/jpeg"
+
+                encoded = base64.b64encode(resp.content).decode("utf-8")
+                images.append({"data": encoded, "mediaType": media_type})
+                logger.info(f"图片下载成功: url={url[:80]}..., size={len(resp.content)}bytes, type={media_type}")
+            except Exception as e:
+                logger.warning(f"下载图片异常: url={url}, error={e}")
+    return images
 
 
 async def get_forward_config_for_user(
@@ -306,7 +357,8 @@ async def forward_to_agent_with_user_project(
     content: str,
     timeout: int,
     session_id: str | None = None,
-    current_project_id: str | None = None
+    current_project_id: str | None = None,
+    image_urls: list[str] | None = None,
 ) -> AgentResult | None:
     """
     使用用户项目配置转发消息到 Agent（支持三层架构）
@@ -320,6 +372,7 @@ async def forward_to_agent_with_user_project(
         timeout: 超时时间（秒）
         session_id: 会话 ID（可选）
         current_project_id: 当前会话指定的项目 ID（可选）
+        image_urls: 图片 URL 列表（可选）
 
     Returns:
         AgentResult 或 None（包含项目信息）
@@ -353,6 +406,13 @@ async def forward_to_agent_with_user_project(
     request_body = {"message": content}
     if session_id:
         request_body["sessionId"] = session_id
+
+    # 下载图片并编码为 base64
+    if image_urls:
+        images = await download_images_as_base64(image_urls)
+        if images:
+            request_body["images"] = images
+            logger.info(f"附带 {len(images)} 张图片转发到 Agent")
 
     start_time = datetime.now()
     request_id = str(uuid.uuid4())[:8]

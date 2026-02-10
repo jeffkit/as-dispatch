@@ -1,9 +1,12 @@
 """
 回调处理路由
 
-处理企微机器人回调
+处理企微机器人回调。
+支持消息去重：企微在未及时收到 200 时会重试，同一消息可能被推送多次，通过去重避免重复转发和重复回复。
 """
+import hashlib
 import logging
+import time
 from datetime import datetime
 
 from fastapi import APIRouter, Request, Header
@@ -42,6 +45,43 @@ from .tunnel_commands import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ============== 消息去重（防企微重试导致重复转发/重复回复）==============
+
+# 已处理消息 key -> 过期时间戳；定期清理过期项
+_dedup_cache: dict[str, float] = {}
+_DEDUP_TTL_SECONDS = 120
+_DEDUP_CLEANUP_THRESHOLD = 500
+
+
+def _make_dedup_key(bot_key: str, chat_id: str, content: str, data: dict) -> str:
+    """生成去重 key：优先使用企微/飞鸽的 msgid（若有），否则用 bot+chat+内容 的哈希。"""
+    msg_id = data.get("msgid") or data.get("msg_id") or data.get("message_id")
+    if msg_id is not None:
+        return f"id:{bot_key}:{chat_id}:{msg_id}"
+    raw = f"{bot_key}|{chat_id}|{(content or '').strip()}"
+    return f"hash:{hashlib.sha256(raw.encode()).hexdigest()}"
+
+
+def _is_duplicate_message(dedup_key: str) -> bool:
+    """判断是否为重复消息（在 TTL 内已处理过）。"""
+    now = time.time()
+    if dedup_key in _dedup_cache:
+        if _dedup_cache[dedup_key] > now:
+            return True
+        del _dedup_cache[dedup_key]
+    return False
+
+
+def _mark_message_processed(dedup_key: str) -> None:
+    """标记消息已处理（用于去重）。"""
+    now = time.time()
+    _dedup_cache[dedup_key] = now + _DEDUP_TTL_SECONDS
+    if len(_dedup_cache) >= _DEDUP_CLEANUP_THRESHOLD:
+        expired = [k for k, v in _dedup_cache.items() if v <= now]
+        for k in expired:
+            del _dedup_cache[k]
 
 
 # ============== 路由定义 ==============
@@ -172,9 +212,9 @@ async def handle_callback(
                 return {"errcode": 0, "errmsg": "access denied"}
         
         # 提取消息内容
-        content, image_url = extract_content(data)
+        content, image_urls = extract_content(data)
         
-        if not content and not image_url:
+        if not content and not image_urls:
             logger.warning("消息内容为空，跳过处理")
             return {"errcode": 0, "errmsg": "empty content"}
         
@@ -378,6 +418,13 @@ async def handle_callback(
             current_session_id = active_session.session_id
             logger.info(f"找到活跃会话: {active_session.short_id}")
         
+        # === 消息去重：企微重试会导致同一条消息多次回调，避免重复转发和重复回复 ===
+        dedup_key = _make_dedup_key(bot.bot_key, chat_id, content or "", data)
+        if _is_duplicate_message(dedup_key):
+            logger.info(f"忽略重复消息: dedup_key={dedup_key[:64]}...")
+            return {"errcode": 0, "errmsg": "ok"}
+        _mark_message_processed(dedup_key)
+        
         # 获取目标 URL（用于日志）
         target_url = bot.forward_config.get_url()
         
@@ -437,7 +484,8 @@ async def handle_callback(
                 content=content or "",
                 timeout=config.timeout,
                 session_id=current_session_id,
-                current_project_id=current_project_id
+                current_project_id=current_project_id,
+                image_urls=image_urls if image_urls else None,
             )
         except ValueError as e:
             # 捕获配置错误（forwarder 抛出的 ValueError）

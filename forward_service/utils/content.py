@@ -5,7 +5,7 @@
 """
 
 
-def extract_content(data: dict) -> tuple[str | None, str | None]:
+def extract_content(data: dict) -> tuple[str | None, list[str]]:
     """
     从回调数据中提取消息内容
     
@@ -13,7 +13,7 @@ def extract_content(data: dict) -> tuple[str | None, str | None]:
         data: 飞鸽回调原始数据
     
     Returns:
-        (text_content, image_url)
+        (text_content, image_urls) - image_urls 是图片 URL 列表
     """
     msg_type = data.get("msgtype", "")
     
@@ -25,11 +25,12 @@ def extract_content(data: dict) -> tuple[str | None, str | None]:
             parts = content.split(" ", 1)
             if len(parts) > 1:
                 content = parts[1].strip()
-        return content, None
+        return content, []
     
     elif msg_type == "image":
         image_data = data.get("image", {})
-        return None, image_data.get("image_url", "")
+        image_url = image_data.get("image_url", "")
+        return None, [image_url] if image_url else []
     
     elif msg_type == "mixed":
         mixed = data.get("mixed_message", {})
@@ -55,7 +56,6 @@ def extract_content(data: dict) -> tuple[str | None, str | None]:
                     images.append(img_url)
         
         content = "\n".join(contents) if contents else None
-        image_url = images[0] if images else None
-        return content, image_url
+        return content, images
     
-    return None, None
+    return None, []
