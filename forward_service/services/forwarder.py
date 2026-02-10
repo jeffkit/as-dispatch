@@ -435,7 +435,7 @@ async def forward_to_agent_with_user_project(
 
             if reply:
                 return AgentResult(
-                    reply=str(reply)[:2000],  # 限制长度
+                    reply=str(reply),
                     msg_type="text",
                     session_id=response_session_id,
                     project_id=forward_config.project_id,
@@ -578,7 +578,7 @@ async def _forward_via_tunnel(
         
         if reply:
             return AgentResult(
-                reply=str(reply)[:2000],
+                reply=str(reply),
                 msg_type="text",
                 session_id=response_session_id,
                 project_id=forward_config.project_id,
