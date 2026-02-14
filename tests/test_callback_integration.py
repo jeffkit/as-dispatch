@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from forward_service.config import BotConfig, ForwardConfig, AccessControl
 from forward_service.services.forwarder import AgentResult
+from forward_service.utils.content import ExtractedContent
 
 
 class MockRequest:
@@ -132,7 +133,7 @@ class TestHandleCallbackAuth:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("Hello", None)
+            mock_extract.return_value = ExtractedContent(text="Hello", image_urls=[])
             mock_forward.return_value = AgentResult(
                 reply="Hi!", msg_type="text", session_id="sess_123", project_id=None
             )
@@ -266,7 +267,7 @@ class TestHandleCallbackSlashCommands:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("/r", None)
+            mock_extract.return_value = ExtractedContent(text="/r", image_urls=[])
             mock_send.return_value = {"success": True}
 
             request = MockRequest(create_callback_data(content="/r"))
@@ -299,7 +300,7 @@ class TestHandleCallbackSlashCommands:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("/s", None)
+            mock_extract.return_value = ExtractedContent(text="/s", image_urls=[])
             mock_send.return_value = {"success": True}
 
             request = MockRequest(create_callback_data(content="/s"))
@@ -340,7 +341,7 @@ class TestHandleCallbackForward:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("Hello", None)
+            mock_extract.return_value = ExtractedContent(text="Hello", image_urls=[])
             mock_forward.return_value = mock_result
             mock_send.return_value = {"success": True}
             mock_add_log.return_value = 1
@@ -376,7 +377,7 @@ class TestHandleCallbackForward:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("Hello", None)
+            mock_extract.return_value = ExtractedContent(text="Hello", image_urls=[])
             mock_forward.return_value = None  # 转发失败
             mock_send.return_value = {"success": True}
             mock_add_log.return_value = 1
@@ -410,7 +411,7 @@ class TestHandleCallbackAdminCommands:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("/help", None)
+            mock_extract.return_value = ExtractedContent(text="/help", image_urls=[])
             mock_check_admin.return_value = True
             mock_admin_help.return_value = "Admin Help"
             mock_send.return_value = {"success": True}
@@ -440,7 +441,7 @@ class TestHandleCallbackAdminCommands:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("/help", None)
+            mock_extract.return_value = ExtractedContent(text="/help", image_urls=[])
             mock_check_admin.return_value = False
             mock_user_help.return_value = "User Help"
             mock_send.return_value = {"success": True}
@@ -498,7 +499,7 @@ class TestHandleCallbackProjectCommands:
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
             mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
-            mock_extract.return_value = ("/lp", None)
+            mock_extract.return_value = ExtractedContent(text="/lp", image_urls=[])
             mock_is_proj.return_value = True
             mock_handle_proj.return_value = (True, "Projects list")  # 返回 (success, message) 元组
             mock_send.return_value = {"success": True}

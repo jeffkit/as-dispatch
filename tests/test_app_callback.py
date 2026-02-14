@@ -194,9 +194,9 @@ class TestCallbackMessageExtraction:
             "text": {"content": "@Bot hello"}
         }
         
-        content, image_url = extract_content(data)
-        assert content == "hello"  # 应该去除 @Bot
-        assert image_url is None
+        result = extract_content(data)
+        assert result.text == "hello"  # 应该去除 @Bot
+        assert result.image_urls == []
     
     def test_extract_image_message(self):
         """测试提取图片消息"""
@@ -207,9 +207,9 @@ class TestCallbackMessageExtraction:
             "image": {"image_url": "https://example.com/image.png"}
         }
         
-        content, image_url = extract_content(data)
-        assert content is None
-        assert image_url == "https://example.com/image.png"
+        result = extract_content(data)
+        assert result.text is None
+        assert result.image_urls == ["https://example.com/image.png"]
     
     def test_extract_mixed_message(self):
         """测试提取混合消息（文本+图片）"""
@@ -231,9 +231,9 @@ class TestCallbackMessageExtraction:
             }
         }
         
-        content, image_url = extract_content(data)
-        assert content == "text content"  # 应该去除 @Bot
-        assert image_url == "https://example.com/image.png"
+        result = extract_content(data)
+        assert result.text == "text content"  # 应该去除 @Bot
+        assert result.image_urls == ["https://example.com/image.png"]
 
 
 if __name__ == "__main__":

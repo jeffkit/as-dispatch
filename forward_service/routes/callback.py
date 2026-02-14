@@ -251,8 +251,14 @@ async def handle_callback(
                 )
                 return {"errcode": 0, "errmsg": "access denied"}
         
-        # 提取消息内容
-        content, image_urls = extract_content(data)
+        # 提取消息内容（自动剥离引用消息，只保留用户实际回复）
+        extracted = extract_content(data)
+        content = extracted.text
+        image_urls = extracted.image_urls
+        quoted_short_id = extracted.quoted_short_id
+        
+        if quoted_short_id:
+            logger.info(f"检测到引用回复，quoted_short_id={quoted_short_id}")
         
         if not content and not image_urls:
             logger.warning("消息内容为空，跳过处理")
@@ -479,11 +485,27 @@ async def handle_callback(
                     return {"errcode": 0, "errmsg": "slash command handled"}
         
         # === 会话管理：获取现有 session_id（使用 effective_user）===
+        # 如果引用回复中包含 short_id，自动切换到被引用的会话
         current_session_id = None
-        active_session = await session_mgr.get_active_session(effective_user, chat_id, bot.bot_key)
-        if active_session:
-            current_session_id = active_session.session_id
-            logger.info(f"找到活跃会话: {active_session.short_id}")
+        active_session = None
+        
+        if quoted_short_id:
+            # 尝试用引用中的 short_id 自动切换会话
+            quoted_session = await session_mgr.change_session(
+                effective_user, chat_id, quoted_short_id, bot_key=bot.bot_key
+            )
+            if quoted_session:
+                active_session = quoted_session
+                current_session_id = quoted_session.session_id
+                logger.info(f"引用回复自动切换到会话: {quoted_session.short_id}")
+            else:
+                logger.warning(f"引用 short_id={quoted_short_id} 未匹配到会话，使用当前活跃会话")
+        
+        if not active_session:
+            active_session = await session_mgr.get_active_session(effective_user, chat_id, bot.bot_key)
+            if active_session:
+                current_session_id = active_session.session_id
+                logger.info(f"找到活跃会话: {active_session.short_id}")
         
         # === 消息去重：企微重试会导致同一条消息多次回调，避免重复转发和重复回复 ===
         dedup_key = _make_dedup_key(bot.bot_key, chat_id, content or "", data)

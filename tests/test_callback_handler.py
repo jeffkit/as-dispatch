@@ -272,9 +272,10 @@ class TestCallbackMessageExtraction:
             "text": {"content": "@Bot hello world"}
         }
 
-        content, image_url = extract_content(data)
-        assert content == "hello world"
-        assert image_url is None
+        result = extract_content(data)
+        assert result.text == "hello world"
+        assert result.image_urls == []
+        assert result.quoted_short_id is None
 
     def test_extract_text_without_at(self):
         """测试提取没有 @ 的文本消息"""
@@ -285,8 +286,8 @@ class TestCallbackMessageExtraction:
             "text": {"content": "direct message"}
         }
 
-        content, image_url = extract_content(data)
-        assert content == "direct message"
+        result = extract_content(data)
+        assert result.text == "direct message"
 
     def test_extract_image_message(self):
         """测试提取图片消息"""
@@ -297,9 +298,9 @@ class TestCallbackMessageExtraction:
             "image": {"image_url": "https://example.com/image.png"}
         }
 
-        content, image_url = extract_content(data)
-        assert content is None
-        assert image_url == "https://example.com/image.png"
+        result = extract_content(data)
+        assert result.text is None
+        assert result.image_urls == ["https://example.com/image.png"]
 
     def test_extract_mixed_message(self):
         """测试提取混合消息"""
@@ -321,9 +322,9 @@ class TestCallbackMessageExtraction:
             }
         }
 
-        content, image_url = extract_content(data)
-        assert content == "text part"
-        assert image_url == "https://example.com/img.png"
+        result = extract_content(data)
+        assert result.text == "text part"
+        assert result.image_urls == ["https://example.com/img.png"]
 
     def test_extract_empty_message(self):
         """测试空消息"""
@@ -331,9 +332,95 @@ class TestCallbackMessageExtraction:
 
         data = {"msgtype": "text", "text": {"content": ""}}
 
-        content, image_url = extract_content(data)
-        assert content == ""
-        assert image_url is None
+        result = extract_content(data)
+        assert result.text == ""
+        assert result.image_urls == []
+
+
+class TestQuoteMessageExtraction:
+    """测试引用消息解析"""
+
+    def test_strip_quote_with_short_id(self):
+        """测试剥离引用消息并提取 short_id"""
+        from forward_service.utils.content import strip_quote_content
+
+        text = '\u201cBot: \n[#ca899477 agent-studio]\n这是 AI 的回复内容...\u201d\n------\n@Bot 这是我的实际回复'
+        clean_text, short_id = strip_quote_content(text)
+
+        assert clean_text == "@Bot 这是我的实际回复"
+        assert short_id == "ca899477"
+
+    def test_strip_quote_without_short_id(self):
+        """测试剥离不含 short_id 的引用消息"""
+        from forward_service.utils.content import strip_quote_content
+
+        text = '\u201c这是一条普通的被引用消息\u201d\n------\n@Bot 我的回复'
+        clean_text, short_id = strip_quote_content(text)
+
+        assert clean_text == "@Bot 我的回复"
+        assert short_id is None
+
+    def test_no_quote_passthrough(self):
+        """测试非引用消息原样通过"""
+        from forward_service.utils.content import strip_quote_content
+
+        text = "这是一条普通消息"
+        clean_text, short_id = strip_quote_content(text)
+
+        assert clean_text == "这是一条普通消息"
+        assert short_id is None
+
+    def test_extract_content_with_quote(self):
+        """测试 extract_content 完整流程：引用消息"""
+        from forward_service.utils import extract_content
+
+        data = {
+            "msgtype": "text",
+            "text": {
+                "content": '\u201cBot: \n[#abcd1234 my-project]\nAI 回复内容...\u201d\n------\n@Bot 用户的实际问题'
+            }
+        }
+
+        result = extract_content(data)
+        # 引用被剥离，@Bot 被去除，只剩用户实际内容
+        assert result.text == "用户的实际问题"
+        assert result.quoted_short_id == "abcd1234"
+
+    def test_extract_content_quote_empty_reply(self):
+        """测试引用消息但用户没有写回复"""
+        from forward_service.utils import extract_content
+
+        data = {
+            "msgtype": "text",
+            "text": {
+                "content": '\u201c[#abcd1234]\nAI 回复\u201d\n------\n'
+            }
+        }
+
+        result = extract_content(data)
+        assert result.text == ""
+        assert result.quoted_short_id == "abcd1234"
+
+    def test_strip_quote_short_id_without_project(self):
+        """测试提取不带项目名的 short_id"""
+        from forward_service.utils.content import strip_quote_content
+
+        text = '\u201c[#abc12345]\n回复内容\u201d\n------\n我的消息'
+        clean_text, short_id = strip_quote_content(text)
+
+        assert clean_text == "我的消息"
+        assert short_id == "abc12345"
+
+    def test_not_quote_format_with_separator(self):
+        """测试包含分隔线但非引用格式的消息"""
+        from forward_service.utils.content import strip_quote_content
+
+        # 不以中文左引号开头，不是引用格式
+        text = '这不是引用\n------\n但有分隔线'
+        clean_text, short_id = strip_quote_content(text)
+
+        assert clean_text == text  # 原样返回
+        assert short_id is None
 
 
 class TestCallbackWebhookExtraction:
