@@ -636,7 +636,8 @@ class ConfigDB:
                     timeout=data.get("timeout", DEFAULT_TIMEOUT),
                     access_mode=data.get("access_mode", "allow_all"),
                     description=data.get("description", ""),
-                    enabled=data.get("enabled", True)
+                    enabled=data.get("enabled", True),
+                    platform=data.get("platform", "wecom")
                 )
 
                 # 创建访问规则

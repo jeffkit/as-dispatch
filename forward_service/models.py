@@ -80,6 +80,7 @@ class Chatbot(Base):
         String(20),
         nullable=False,
         default="wecom",
+        server_default="wecom",
         index=True,
         comment="平台类型: wecom, slack, telegram, discord"
     )

@@ -43,7 +43,8 @@ class ChatbotRepository:
         timeout: int = 300,
         access_mode: str = "allow_all",
         description: str = "",
-        enabled: bool = True
+        enabled: bool = True,
+        platform: str = "wecom"
     ) -> Chatbot:
         """
         创建新的 Bot 配置
@@ -58,6 +59,7 @@ class ChatbotRepository:
             access_mode: 访问控制模式
             description: 描述
             enabled: 是否启用
+            platform: 平台类型 (wecom, slack, telegram, discord)
 
         Returns:
             创建的 Chatbot 对象
@@ -71,7 +73,8 @@ class ChatbotRepository:
             timeout=timeout,
             access_mode=access_mode,
             description=description,
-            enabled=enabled
+            enabled=enabled,
+            platform=platform
         )
 
         self.session.add(bot)
