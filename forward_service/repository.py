@@ -14,6 +14,9 @@ from .database import get_db_manager
 
 logger = logging.getLogger(__name__)
 
+# Sentinel value to distinguish "not provided" from None
+_UNSET = object()
+
 
 # ============== Chatbot Repository ==============
 
@@ -44,7 +47,8 @@ class ChatbotRepository:
         access_mode: str = "allow_all",
         description: str = "",
         enabled: bool = True,
-        platform: str = "wecom"
+        platform: str = "wecom",
+        owner_id: str | None = None
     ) -> Chatbot:
         """
         创建新的 Bot 配置
@@ -60,6 +64,7 @@ class ChatbotRepository:
             description: 描述
             enabled: 是否启用
             platform: 平台类型 (wecom, slack, telegram, discord)
+            owner_id: Bot 管理员用户 ID
 
         Returns:
             创建的 Chatbot 对象
@@ -74,7 +79,8 @@ class ChatbotRepository:
             access_mode=access_mode,
             description=description,
             enabled=enabled,
-            platform=platform
+            platform=platform,
+            owner_id=owner_id
         )
 
         self.session.add(bot)
@@ -150,7 +156,8 @@ class ChatbotRepository:
         timeout: int | None = None,
         access_mode: str | None = None,
         description: str | None = None,
-        enabled: bool | None = None
+        enabled: bool | None = None,
+        owner_id: str | None = _UNSET,
     ) -> Optional[Chatbot]:
         """
         更新 Bot 配置
@@ -166,6 +173,7 @@ class ChatbotRepository:
             access_mode: 访问控制模式
             description: 描述
             enabled: 是否启用
+            owner_id: Bot 管理员用户 ID
 
         Returns:
             更新后的 Chatbot 对象或 None
@@ -190,6 +198,8 @@ class ChatbotRepository:
             update_data["description"] = description
         if enabled is not None:
             update_data["enabled"] = enabled
+        if owner_id is not _UNSET:
+            update_data["owner_id"] = owner_id
 
         if not update_data:
             return await self.get_by_id(bot_id)

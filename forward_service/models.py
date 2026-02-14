@@ -135,6 +135,15 @@ class Chatbot(Base):
         comment="访问控制模式: allow_all, whitelist, blacklist"
     )
 
+    # Bot 管理员（首次 /register 的用户）
+    owner_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        default=None,
+        index=True,
+        comment="Bot 管理员用户 ID（首次 /register 的用户）"
+    )
+
     # 状态
     enabled: Mapped[bool] = mapped_column(
         Boolean,
@@ -278,6 +287,7 @@ class Chatbot(Base):
             "bot_key": self.bot_key,
             "name": self.name,
             "description": self.description,
+            "owner_id": self.owner_id,
             "forward_config": {
                 "url_template": self.url_template,
                 "agent_id": self.agent_id,

@@ -43,6 +43,11 @@ from .tunnel_commands import (
     is_tunnel_command,
     handle_tunnel_command
 )
+from .bot_commands import (
+    is_bot_command,
+    handle_bot_command,
+    get_register_help,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,22 +160,57 @@ async def handle_callback(
             # 记录失败不影响主流程
             logger.warning(f"记录 chat_type 失败: {e}")
         
-        # 获取 Bot 配置（如果找不到会回退到 default_bot）
-        bot = config.get_bot_or_default(bot_key)
+        # === Bot 查找与自动发现 ===
+        bot = config.get_bot(bot_key) if bot_key else None
+        
+        if not bot and bot_key:
+            # bot_key 存在但未注册：自动创建骨架 Bot
+            logger.info(f"未知的 bot_key={bot_key[:10]}...，尝试自动创建骨架 Bot")
+            try:
+                from ..repository import get_chatbot_repository
+                db_mgr = get_db_manager()
+                async with db_mgr.get_session() as auto_session:
+                    bot_repo = get_chatbot_repository(auto_session)
+                    # 再次检查是否已存在（可能刚刚被并发创建）
+                    existing = await bot_repo.get_by_bot_key(bot_key)
+                    if not existing:
+                        await bot_repo.create(
+                            bot_key=bot_key,
+                            name=f"未配置 Bot ({bot_key[:8]}...)",
+                            url_template="",
+                            enabled=False,
+                        )
+                        await auto_session.commit()
+                        logger.info(f"自动创建骨架 Bot: {bot_key[:10]}...")
+                    # 刷新内存缓存
+                    await config.reload_config()
+                    bot = config.get_bot(bot_key)
+            except Exception as e:
+                logger.error(f"自动创建 Bot 失败: {e}")
+        
         if not bot:
-            logger.warning(f"未找到 bot_key={bot_key} 的配置，且无默认 Bot")
-            await send_reply(
-                chat_id=chat_id,
-                message="⚠️ Bot 配置错误，请联系管理员",
-                msg_type="text",
-                mentioned_list=mentioned_list,
-            )
-            return {"errcode": 0, "errmsg": "no bot config"}
+            # 无 bot_key 或创建失败：回退到默认 Bot
+            if config.default_bot_key:
+                bot = config.get_bot(config.default_bot_key)
+            if not bot:
+                logger.warning(f"未找到 bot_key={bot_key} 的配置，且无默认 Bot")
+                await send_reply(
+                    chat_id=chat_id,
+                    message="⚠️ Bot 配置错误，请联系管理员",
+                    msg_type="text",
+                    mentioned_list=mentioned_list,
+                )
+                return {"errcode": 0, "errmsg": "no bot config"}
         
-        logger.info(f"使用 Bot: {bot.name} (key={bot.bot_key[:10]}...)")
+        logger.info(f"使用 Bot: {bot.name} (key={bot.bot_key[:10]}..., registered={bot.is_registered})")
         
-        # === 访问控制检查 (同时检查 user_id, chat_id 和 alias) ===
-        allowed, reason = config.check_access(bot, from_user_id, chat_id, from_user_alias)
+        # === 访问控制检查 ===
+        # 未注册的 Bot（无 owner）跳过访问控制，允许任何人发送 /register
+        if not bot.is_registered:
+            logger.info(f"Bot 未注册，跳过访问控制检查")
+            allowed, reason = True, ""
+        else:
+            allowed, reason = config.check_access(bot, from_user_id, chat_id, from_user_alias)
         if not allowed:
             logger.warning(f"用户 {from_user_name} ({from_user_id}) 被拒绝访问 Bot {bot.name}: {reason}")
             
@@ -217,6 +257,31 @@ async def handle_callback(
         if not content and not image_urls:
             logger.warning("消息内容为空，跳过处理")
             return {"errcode": 0, "errmsg": "empty content"}
+        
+        # === Bot 注册/管理命令处理（优先于其他命令）===
+        if content and is_bot_command(content):
+            success, response_msg = await handle_bot_command(
+                bot.bot_key, content, from_user_id
+            )
+            await send_reply(
+                chat_id=chat_id,
+                message=response_msg,
+                msg_type="text",
+                bot_key=bot.bot_key,
+                mentioned_list=mentioned_list,
+            )
+            return {"errcode": 0, "errmsg": "bot command handled"}
+        
+        # === 未配置 Bot 检查：无 target_url 且无用户项目时，引导注册 ===
+        if not bot.is_configured and not bot.is_registered:
+            await send_reply(
+                chat_id=chat_id,
+                message=get_register_help(),
+                msg_type="text",
+                bot_key=bot.bot_key,
+                mentioned_list=mentioned_list,
+            )
+            return {"errcode": 0, "errmsg": "bot not configured, register help shown"}
         
         # === 项目命令处理 ===
         if content and is_project_command(content):
@@ -439,10 +504,16 @@ async def handle_callback(
                 project_repo = get_user_project_repository(session)
                 user_projects = await project_repo.get_user_projects(bot.bot_key, chat_id)
                 if not user_projects:
-                    # 没有目标 URL 也没有绑定项目，显示帮助信息
+                    # 没有目标 URL 也没有绑定项目
+                    if not bot.is_registered:
+                        # Bot 未注册：显示注册引导
+                        help_msg = get_register_help()
+                    else:
+                        # Bot 已注册但用户无项目：显示用户帮助
+                        help_msg = get_user_help()
                     await send_reply(
                         chat_id=chat_id,
-                        message=get_user_help(),
+                        message=help_msg,
                         msg_type="text",
                         bot_key=bot.bot_key,
                         mentioned_list=mentioned_list,

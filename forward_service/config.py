@@ -159,6 +159,7 @@ class BotConfig:
         forward_config: ForwardConfig | None = None,
         access_control: AccessControl | None = None,
         enabled: bool = True,
+        owner_id: str | None = None,
         _bot: Chatbot | None = None  # 内部使用,保留对数据库模型的引用
     ):
         self.bot_key = bot_key
@@ -167,7 +168,18 @@ class BotConfig:
         self.forward_config = forward_config or ForwardConfig(target_url="")
         self.access_control = access_control or AccessControl()
         self.enabled = enabled
+        self.owner_id = owner_id
         self._bot = _bot  # 保留数据库模型引用
+
+    @property
+    def is_registered(self) -> bool:
+        """Bot 是否已注册（有 owner）"""
+        return self.owner_id is not None
+
+    @property
+    def is_configured(self) -> bool:
+        """Bot 是否已配置转发目标"""
+        return bool(self.forward_config and self.forward_config.get_url())
 
     def to_dict(self) -> dict:
         return {
@@ -176,7 +188,8 @@ class BotConfig:
             "description": self.description,
             "forward_config": self.forward_config.to_dict(),
             "access_control": self.access_control.to_dict(),
-            "enabled": self.enabled
+            "enabled": self.enabled,
+            "owner_id": self.owner_id
         }
 
     @classmethod
@@ -189,6 +202,7 @@ class BotConfig:
             forward_config=ForwardConfig.from_bot(bot),
             access_control=AccessControl.from_bot(bot),
             enabled=bot.enabled,
+            owner_id=bot.owner_id,
             _bot=bot  # 保留数据库模型引用
         )
 
