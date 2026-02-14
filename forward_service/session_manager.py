@@ -5,6 +5,7 @@ Forward Service 会话管理器
 - 记录 session_id
 - 支持会话持续性
 - 处理 Slash 命令
+- 群聊共享会话（effective_user 机制）
 """
 import logging
 import re
@@ -17,6 +18,55 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .models import UserSession
 
 logger = logging.getLogger(__name__)
+
+
+def get_effective_user(user_id: str, chat_id: str, chat_type: str) -> str:
+    """
+    获取会话的有效用户标识
+
+    群聊: 返回 chat_id（所有人共享同一会话）
+    私聊: 返回 user_id（个人独立会话）
+
+    Args:
+        user_id: 实际发送者 ID
+        chat_id: 会话 ID（私聊中 ≈ user_id，群聊中为群 ID）
+        chat_type: 会话类型 ("group" 或 "single")
+
+    Returns:
+        有效用户标识
+    """
+    if chat_type == "group":
+        return chat_id  # 群内所有人共用
+    return user_id  # 私聊按用户隔离
+
+
+def compute_processing_key(
+    session_id: str | None,
+    user_id: str,
+    chat_id: str,
+    bot_key: str,
+    chat_type: str
+) -> str:
+    """
+    计算并发锁的 key
+
+    有活跃会话（已有 session_id）：锁定具体的 Agent 会话
+    新会话（无 session_id）：按 effective_user:bot_key 锁定
+
+    Args:
+        session_id: Agent 会话 ID（可能为 None）
+        user_id: 发送者 ID
+        chat_id: 会话 ID
+        bot_key: Bot Key
+        chat_type: 会话类型 ("group" 或 "single")
+
+    Returns:
+        processing session key
+    """
+    if session_id:
+        return session_id
+    effective_user = get_effective_user(user_id, chat_id, chat_type)
+    return f"{effective_user}:{bot_key}"
 
 # Slash 命令正则
 SLASH_COMMANDS = {

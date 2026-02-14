@@ -64,3 +64,4 @@ alembic/versions/__pycache__/
 
 # UV lock file
 uv.lock
+.worktrees/

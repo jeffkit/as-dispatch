@@ -13,11 +13,11 @@ from fastapi import APIRouter, Request, Header
 
 from ..config import config
 from ..sender import send_reply
-from ..session_manager import get_session_manager
+from ..session_manager import get_session_manager, get_effective_user, compute_processing_key
 from ..utils import extract_content
 from ..services import forward_to_agent_with_user_project
 from ..database import get_db_manager
-from ..repository import get_chat_info_repository
+from ..repository import get_chat_info_repository, get_processing_session_repository
 from .admin import add_request_log, update_request_log, RequestLogData
 from .admin_commands import (
     check_is_admin,
@@ -242,6 +242,9 @@ async def handle_callback(
             )
             return {"errcode": 0, "errmsg": "tunnel command handled"}
         
+        # === 计算 effective_user：群聊共享会话，私聊独立 ===
+        effective_user = get_effective_user(from_user_id, chat_id, chat_type)
+        
         # === 会话管理：处理 Slash 命令 ===
         session_mgr = get_session_manager()  # 提前获取，供项目命令和 slash 命令使用
         
@@ -254,7 +257,7 @@ async def handle_callback(
                 
                 if cmd_type == "list":
                     # /sess - 列出会话（只列出当前 Bot 的会话）
-                    sessions = await session_mgr.list_sessions(from_user_id, chat_id, bot_key=bot.bot_key)
+                    sessions = await session_mgr.list_sessions(effective_user, chat_id, bot_key=bot.bot_key)
                     reply_msg = session_mgr.format_session_list(sessions)
                     await send_reply(
                         chat_id=chat_id,
@@ -267,7 +270,7 @@ async def handle_callback(
                 
                 elif cmd_type == "reset":
                     # /reset 或 /r - 新建会话（重置当前会话）
-                    success = await session_mgr.reset_session(from_user_id, chat_id, bot.bot_key)
+                    success = await session_mgr.reset_session(effective_user, chat_id, bot.bot_key)
                     if success:
                         await send_reply(
                             chat_id=chat_id,
@@ -289,7 +292,7 @@ async def handle_callback(
                 
                 elif cmd_type == "change":
                     # /change <short_id> [message] - 切换会话，可选附带消息
-                    target_session = await session_mgr.change_session(from_user_id, chat_id, cmd_arg, bot_key=bot.bot_key)
+                    target_session = await session_mgr.change_session(effective_user, chat_id, cmd_arg, bot_key=bot.bot_key)
                     if not target_session:
                         await send_reply(
                             chat_id=chat_id,
@@ -410,10 +413,9 @@ async def handle_callback(
                     )
                     return {"errcode": 0, "errmsg": "slash command handled"}
         
-        # === 会话管理：获取现有 session_id ===
+        # === 会话管理：获取现有 session_id（使用 effective_user）===
         current_session_id = None
-        session_mgr = get_session_manager()
-        active_session = await session_mgr.get_active_session(from_user_id, chat_id, bot.bot_key)
+        active_session = await session_mgr.get_active_session(effective_user, chat_id, bot.bot_key)
         if active_session:
             current_session_id = active_session.session_id
             logger.info(f"找到活跃会话: {active_session.short_id}")
@@ -446,6 +448,69 @@ async def handle_callback(
                         mentioned_list=mentioned_list,
                     )
                     return {"errcode": 0, "errmsg": "no target configured, help shown"}
+        
+        # === 并发控制：基于 DB 的 ProcessingSession 锁 ===
+        processing_key = compute_processing_key(
+            current_session_id, from_user_id, chat_id, bot.bot_key, chat_type
+        )
+        
+        PROCESSING_TIMEOUT_SECONDS = 300  # 5 分钟超时
+        processing_acquired = False
+        
+        db_manager = get_db_manager()
+        async with db_manager.get_session() as lock_session:
+            processing_repo = get_processing_session_repository(lock_session)
+            
+            # 尝试获取处理锁
+            processing_acquired = await processing_repo.try_acquire(
+                session_key=processing_key,
+                user_id=from_user_id,
+                chat_id=chat_id,
+                bot_key=bot.bot_key,
+                message=content or "(image)"
+            )
+            
+            if processing_acquired:
+                await lock_session.commit()
+            else:
+                # 锁定失败：检查是否超时
+                lock_info = await processing_repo.get_lock_info(processing_key)
+                if lock_info:
+                    from datetime import timezone as tz
+                    elapsed = (datetime.now(tz.utc) - lock_info.started_at).total_seconds()
+                    
+                    if elapsed > PROCESSING_TIMEOUT_SECONDS:
+                        # 超时：强制释放旧锁并重试
+                        await processing_repo.force_release(processing_key)
+                        await lock_session.commit()
+                        
+                        # 重新获取锁
+                        async with db_manager.get_session() as retry_session:
+                            retry_repo = get_processing_session_repository(retry_session)
+                            processing_acquired = await retry_repo.try_acquire(
+                                session_key=processing_key,
+                                user_id=from_user_id,
+                                chat_id=chat_id,
+                                bot_key=bot.bot_key,
+                                message=content or "(image)"
+                            )
+                            if processing_acquired:
+                                await retry_session.commit()
+                    
+                    if not processing_acquired:
+                        # 仍然被锁定：回复用户等待
+                        elapsed_str = f"{int(elapsed // 60)}分{int(elapsed % 60)}秒" if elapsed >= 60 else f"{int(elapsed)}秒"
+                        await send_reply(
+                            chat_id=chat_id,
+                            message=f"⏳ 前一条消息正在处理中（已等待 {elapsed_str}），请稍候...",
+                            msg_type="text",
+                            bot_key=bot.bot_key,
+                            mentioned_list=mentioned_list,
+                        )
+                        return {"errcode": 0, "errmsg": "session busy"}
+                else:
+                    # 无锁信息但获取失败（理论上不应发生），直接通过
+                    processing_acquired = True
         
         # 创建日志记录（持久化到数据库）
         log_data = RequestLogData(
@@ -540,6 +605,16 @@ async def handle_callback(
         finally:
             # 无论成功失败，都从 pending 列表移除
             remove_pending_request(request_id)
+            
+            # 释放 ProcessingSession 锁
+            if processing_acquired:
+                try:
+                    async with db_manager.get_session() as release_session:
+                        release_repo = get_processing_session_repository(release_session)
+                        await release_repo.release(processing_key)
+                        await release_session.commit()
+                except Exception as release_err:
+                    logger.error(f"释放处理锁失败: {release_err}")
 
         duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
@@ -562,11 +637,10 @@ async def handle_callback(
             )
             return {"errcode": 0, "errmsg": "forward failed"}
         
-        # === 会话管理：记录 Agent 返回的 session_id ===
+        # === 会话管理：记录 Agent 返回的 session_id（使用 effective_user）===
         if result.session_id:
-            session_mgr = get_session_manager()
             await session_mgr.record_session(
-                user_id=from_user_id,
+                user_id=effective_user,
                 chat_id=chat_id,
                 bot_key=bot.bot_key,
                 session_id=result.session_id,

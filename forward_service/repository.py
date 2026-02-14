@@ -9,7 +9,7 @@ from typing import Optional, List
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Chatbot, ChatAccessRule, ForwardLog, SystemConfig, UserProjectConfig, ChatInfo
+from .models import Chatbot, ChatAccessRule, ForwardLog, SystemConfig, UserProjectConfig, ChatInfo, ProcessingSession
 from .database import get_db_manager
 
 logger = logging.getLogger(__name__)
@@ -1263,3 +1263,159 @@ class ChatInfoRepository:
 def get_chat_info_repository(session: AsyncSession) -> ChatInfoRepository:
     """获取 ChatInfoRepository 实例"""
     return ChatInfoRepository(session)
+
+
+# ============== ProcessingSession Repository ==============
+
+class ProcessingSessionRepository:
+    """
+    处理中会话数据访问层
+
+    基于数据库的并发锁实现，用于防止同一会话并发发送多个请求到 Agent。
+    利用 processing_sessions 表的 session_key UNIQUE 约束实现互斥锁。
+
+    支持多实例部署（共享数据库即可生效）。
+    """
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def try_acquire(
+        self,
+        session_key: str,
+        user_id: str,
+        chat_id: str,
+        bot_key: str,
+        message: str
+    ) -> bool:
+        """
+        尝试获取处理锁
+
+        利用 UNIQUE 约束实现互斥：INSERT 成功则获得锁，冲突则表示已被锁定。
+
+        Args:
+            session_key: 锁标识（session_id 或 effective_user:bot_key）
+            user_id: 发送者 ID
+            chat_id: 会话 ID
+            bot_key: Bot Key
+            message: 正在处理的消息（截断保存）
+
+        Returns:
+            True 表示成功获取锁，False 表示已被锁定
+        """
+        try:
+            record = ProcessingSession(
+                session_key=session_key,
+                user_id=user_id,
+                chat_id=chat_id,
+                bot_key=bot_key,
+                message=message[:500] if message else "",
+                started_at=datetime.now(timezone.utc)
+            )
+            self.session.add(record)
+            await self.session.flush()
+            return True
+        except Exception:
+            # UNIQUE 约束冲突或其他错误，回滚本次操作
+            await self.session.rollback()
+            return False
+
+    async def release(self, session_key: str) -> bool:
+        """
+        释放处理锁
+
+        Args:
+            session_key: 锁标识
+
+        Returns:
+            是否成功释放（True 表示有记录被删除）
+        """
+        stmt = delete(ProcessingSession).where(
+            ProcessingSession.session_key == session_key
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return result.rowcount > 0
+
+    async def get_lock_info(self, session_key: str) -> Optional[ProcessingSession]:
+        """
+        获取锁信息
+
+        Args:
+            session_key: 锁标识
+
+        Returns:
+            ProcessingSession 记录或 None
+        """
+        stmt = select(ProcessingSession).where(
+            ProcessingSession.session_key == session_key
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def force_release(self, session_key: str) -> bool:
+        """
+        强制释放锁（用于超时清理）
+
+        与 release 相同，但语义上表示这是一次强制操作。
+
+        Args:
+            session_key: 锁标识
+
+        Returns:
+            是否成功释放
+        """
+        released = await self.release(session_key)
+        if released:
+            logger.warning(f"强制释放处理锁: session_key={session_key[:30]}...")
+        return released
+
+    async def cleanup_stale(self, timeout_seconds: int = 300) -> int:
+        """
+        清理超时的锁
+
+        清除 started_at 超过指定秒数的记录，防止因服务崩溃导致的死锁。
+
+        Args:
+            timeout_seconds: 超时阈值（秒），默认 5 分钟
+
+        Returns:
+            清理的记录数
+        """
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)
+
+        stmt = delete(ProcessingSession).where(
+            ProcessingSession.started_at < cutoff
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+
+        cleaned = result.rowcount or 0
+        if cleaned > 0:
+            logger.warning(f"清理 {cleaned} 条过期的处理锁 (超过 {timeout_seconds} 秒)")
+        return cleaned
+
+    async def get_all_active(self) -> List[ProcessingSession]:
+        """
+        获取所有活跃的处理锁
+
+        Returns:
+            ProcessingSession 对象列表
+        """
+        stmt = select(ProcessingSession).order_by(
+            ProcessingSession.started_at.desc()
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count(self) -> int:
+        """获取当前锁数量"""
+        stmt = select(func.count(ProcessingSession.id))
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
+
+
+def get_processing_session_repository(session: AsyncSession) -> ProcessingSessionRepository:
+    """获取 ProcessingSessionRepository 实例"""
+    return ProcessingSessionRepository(session)

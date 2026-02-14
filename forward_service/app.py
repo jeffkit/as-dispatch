@@ -48,6 +48,21 @@ async def lifespan(app: FastAPI):
         init_session_manager(get_db_manager())
         logger.info("  会话管理器已初始化")
 
+        # 启动时清理过期的 ProcessingSession 锁（防止服务崩溃导致的死锁）
+        try:
+            from .repository import get_processing_session_repository
+            db = get_db_manager()
+            async with db.get_session() as session:
+                processing_repo = get_processing_session_repository(session)
+                cleaned = await processing_repo.cleanup_stale(timeout_seconds=300)
+                await session.commit()
+                if cleaned > 0:
+                    logger.info(f"  清理了 {cleaned} 条过期的处理锁")
+                else:
+                    logger.info("  处理锁检查完毕，无过期记录")
+        except Exception as e:
+            logger.warning(f"  清理处理锁失败（不影响启动）: {e}")
+
         # 初始化隧道服务器（使用相同的数据库）
         database_url = get_database_url()
         await init_tunnel_server(database_url)
