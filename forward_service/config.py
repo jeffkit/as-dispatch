@@ -656,6 +656,9 @@ class ConfigDB:
 
                 logger.info(f"创建 Bot 成功: {data['bot_key']}")
 
+                # 刷新内存缓存，确保新创建的 Bot 立即可用于消息路由
+                await self.reload_config()
+
                 # 返回创建的 Bot 详情（使用异步方法从数据库获取）
                 created_bot = await self.get_bot_detail(data["bot_key"])
                 return {"success": True, "bot": created_bot}
