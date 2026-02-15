@@ -7,7 +7,7 @@
 import hashlib
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Header
 
@@ -87,6 +87,24 @@ def _mark_message_processed(dedup_key: str) -> None:
         expired = [k for k, v in _dedup_cache.items() if v <= now]
         for k in expired:
             del _dedup_cache[k]
+
+
+def _compute_elapsed_seconds(started_at: datetime) -> float:
+    """
+    计算从 started_at 到现在经过的秒数。
+    
+    安全处理 timezone-aware 和 timezone-naive 的 datetime：
+    - MySQL 的 DATETIME 列不保存时区信息，读回来是 naive datetime
+    - 代码中使用 datetime.now(timezone.utc) 是 aware datetime
+    - 直接相减会抛 TypeError，这里统一处理
+    """
+    now_utc = datetime.now(timezone.utc)
+    
+    if started_at.tzinfo is None:
+        # DB 读回的 naive datetime，假定为 UTC
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    
+    return (now_utc - started_at).total_seconds()
 
 
 # ============== 路由定义 ==============
@@ -551,59 +569,70 @@ async def handle_callback(
         processing_acquired = False
         
         db_manager = get_db_manager()
-        async with db_manager.get_session() as lock_session:
-            processing_repo = get_processing_session_repository(lock_session)
-            
-            # 尝试获取处理锁
-            processing_acquired = await processing_repo.try_acquire(
-                session_key=processing_key,
-                user_id=from_user_id,
-                chat_id=chat_id,
-                bot_key=bot.bot_key,
-                message=content or "(image)"
-            )
-            
-            if processing_acquired:
-                await lock_session.commit()
-            else:
-                # 锁定失败：检查是否超时
-                lock_info = await processing_repo.get_lock_info(processing_key)
-                if lock_info:
-                    from datetime import timezone as tz
-                    elapsed = (datetime.now(tz.utc) - lock_info.started_at).total_seconds()
-                    
-                    if elapsed > PROCESSING_TIMEOUT_SECONDS:
-                        # 超时：强制释放旧锁并重试
-                        await processing_repo.force_release(processing_key)
-                        await lock_session.commit()
-                        
-                        # 重新获取锁
-                        async with db_manager.get_session() as retry_session:
-                            retry_repo = get_processing_session_repository(retry_session)
-                            processing_acquired = await retry_repo.try_acquire(
-                                session_key=processing_key,
-                                user_id=from_user_id,
-                                chat_id=chat_id,
-                                bot_key=bot.bot_key,
-                                message=content or "(image)"
-                            )
-                            if processing_acquired:
-                                await retry_session.commit()
-                    
-                    if not processing_acquired:
-                        # 仍然被锁定：回复用户等待
-                        elapsed_str = f"{int(elapsed // 60)}分{int(elapsed % 60)}秒" if elapsed >= 60 else f"{int(elapsed)}秒"
-                        await send_reply(
-                            chat_id=chat_id,
-                            message=f"⏳ 前一条消息正在处理中（已等待 {elapsed_str}），请稍候...",
-                            msg_type="text",
-                            bot_key=bot.bot_key,
-                            mentioned_list=mentioned_list,
-                        )
-                        return {"errcode": 0, "errmsg": "session busy"}
+        try:
+            async with db_manager.get_session() as lock_session:
+                processing_repo = get_processing_session_repository(lock_session)
+                
+                # 尝试获取处理锁
+                processing_acquired = await processing_repo.try_acquire(
+                    session_key=processing_key,
+                    user_id=from_user_id,
+                    chat_id=chat_id,
+                    bot_key=bot.bot_key,
+                    message=content or "(image)"
+                )
+                
+                if processing_acquired:
+                    await lock_session.commit()
                 else:
-                    # 无锁信息但获取失败（理论上不应发生），直接通过
-                    processing_acquired = True
+                    # 锁定失败：检查是否超时
+                    lock_info = await processing_repo.get_lock_info(processing_key)
+                    if lock_info:
+                        elapsed = _compute_elapsed_seconds(lock_info.started_at)
+                        
+                        if elapsed > PROCESSING_TIMEOUT_SECONDS:
+                            # 超时：强制释放旧锁并重试
+                            await processing_repo.force_release(processing_key)
+                            await lock_session.commit()
+                            
+                            # 重新获取锁
+                            async with db_manager.get_session() as retry_session:
+                                retry_repo = get_processing_session_repository(retry_session)
+                                processing_acquired = await retry_repo.try_acquire(
+                                    session_key=processing_key,
+                                    user_id=from_user_id,
+                                    chat_id=chat_id,
+                                    bot_key=bot.bot_key,
+                                    message=content or "(image)"
+                                )
+                                if processing_acquired:
+                                    await retry_session.commit()
+                        
+                        if not processing_acquired:
+                            # 仍然被锁定：立即回复用户等待
+                            elapsed_str = f"{int(elapsed // 60)}分{int(elapsed % 60)}秒" if elapsed >= 60 else f"{int(elapsed)}秒"
+                            await send_reply(
+                                chat_id=chat_id,
+                                message=f"⏳ 前一条消息正在处理中（已等待 {elapsed_str}），请稍候...\n💡 等处理完毕后再发送新消息",
+                                msg_type="text",
+                                bot_key=bot.bot_key,
+                                mentioned_list=mentioned_list,
+                            )
+                            return {"errcode": 0, "errmsg": "session busy"}
+                    else:
+                        # 无锁信息但获取失败（理论上不应发生），直接通过
+                        processing_acquired = True
+        except Exception as lock_err:
+            # 并发锁异常不能静默吞掉，必须通知用户
+            logger.error(f"并发锁处理异常: {lock_err}", exc_info=True)
+            await send_reply(
+                chat_id=chat_id,
+                message="⏳ 前一条消息可能还在处理中，请稍候再试...",
+                msg_type="text",
+                bot_key=bot.bot_key,
+                mentioned_list=mentioned_list,
+            )
+            return {"errcode": 0, "errmsg": "lock error"}
         
         # 创建日志记录（持久化到数据库）
         log_data = RequestLogData(
