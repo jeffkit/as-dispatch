@@ -518,19 +518,21 @@ async def handle_callback(
                     return {"errcode": 0, "errmsg": "slash command handled"}
         
         # === 会话管理：获取现有 session_id（使用 effective_user）===
-        # 如果引用回复中包含 short_id，自动切换到被引用的会话
+        # 引用回复时「临时使用」目标会话，不切换活跃会话，支持多会话交叉回复
         current_session_id = None
         active_session = None
+        is_quote_pinned = False  # 标记是否为引用回复指定的会话
         
         if quoted_short_id:
-            # 尝试用引用中的 short_id 自动切换会话
-            quoted_session = await session_mgr.change_session(
+            # 只查找会话，不切换活跃状态（支持多会话交叉回复）
+            quoted_session = await session_mgr.get_session_by_short_id(
                 effective_user, chat_id, quoted_short_id, bot_key=bot.bot_key
             )
             if quoted_session:
                 active_session = quoted_session
                 current_session_id = quoted_session.session_id
-                logger.info(f"引用回复自动切换到会话: {quoted_session.short_id}")
+                is_quote_pinned = True
+                logger.info(f"引用回复临时使用会话: {quoted_session.short_id} (不切换活跃会话)")
             else:
                 logger.warning(f"引用 short_id={quoted_short_id} 未匹配到会话，使用当前活跃会话")
         
@@ -776,6 +778,8 @@ async def handle_callback(
         
         # === 会话管理：记录 Agent 返回的 session_id（使用 effective_user）===
         if result.session_id:
+            # 引用回复时不切换活跃会话，只更新被引用会话的消息记录
+            should_set_active = not is_quote_pinned
             await session_mgr.record_session(
                 user_id=effective_user,
                 chat_id=chat_id,
@@ -783,9 +787,10 @@ async def handle_callback(
                 session_id=result.session_id,
                 last_message=content or "(image)",
                 # 保持当前项目设置，避免切换项目后会话项目丢失
-                current_project_id=current_project_id
+                current_project_id=current_project_id,
+                set_active=should_set_active
             )
-            logger.info(f"会话已记录: session={result.session_id[:8]}, project={current_project_id or 'None'}...")
+            logger.info(f"会话已记录: session={result.session_id[:8]}, project={current_project_id or 'None'}, pinned={is_quote_pinned}...")
         
         # 发送结果给用户（使用正确的 bot_key）
         # 使用消息分拆功能，传入 short_id 和 project_name

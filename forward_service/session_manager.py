@@ -138,13 +138,18 @@ class SessionManager:
         bot_key: str,
         session_id: str,
         last_message: str,
-        current_project_id: str | None = None
+        current_project_id: str | None = None,
+        set_active: bool = True
     ) -> UserSession:
         """
         记录或更新会话
         
-        如果是新的 session_id，创建新会话并将旧会话设为非活跃
+        如果是新的 session_id，创建新会话并将旧会话设为非活跃（除非 set_active=False）
         如果是相同的 session_id，更新最后消息
+        
+        Args:
+            set_active: 是否将此会话设为活跃（默认 True）。
+                        引用回复场景下传 False，避免切换活跃会话。
         """
         short_id = session_id[:8] if len(session_id) >= 8 else session_id
         truncated_message = last_message[:200] if last_message else ""
@@ -166,22 +171,24 @@ class SessionManager:
                 # 更新现有会话
                 existing.last_message = truncated_message
                 existing.message_count += 1
-                existing.is_active = True
+                if set_active:
+                    existing.is_active = True
                 existing.updated_at = datetime.now(timezone.utc)
                 await db.commit()
                 return existing
             else:
-                # 将该用户的其他会话设为非活跃
-                await db.execute(
-                    update(UserSession)
-                    .where(and_(
-                        UserSession.user_id == user_id,
-                        UserSession.chat_id == chat_id,
-                        UserSession.bot_key == bot_key,
-                        UserSession.is_active == True
-                    ))
-                    .values(is_active=False)
-                )
+                if set_active:
+                    # 将该用户的其他会话设为非活跃
+                    await db.execute(
+                        update(UserSession)
+                        .where(and_(
+                            UserSession.user_id == user_id,
+                            UserSession.chat_id == chat_id,
+                            UserSession.bot_key == bot_key,
+                            UserSession.is_active == True
+                        ))
+                        .values(is_active=False)
+                    )
                 
                 # 创建新会话
                 new_session = UserSession(
@@ -192,14 +199,14 @@ class SessionManager:
                     short_id=short_id,
                     last_message=truncated_message,
                     message_count=1,
-                    is_active=True,
+                    is_active=set_active,
                     current_project_id=current_project_id
                 )
                 db.add(new_session)
                 await db.commit()
                 await db.refresh(new_session)
                 
-                logger.info(f"新会话创建: user={user_id[:10]}, session={short_id}, project={current_project_id or 'None'}")
+                logger.info(f"新会话创建: user={user_id[:10]}, session={short_id}, project={current_project_id or 'None'}, active={set_active}")
                 return new_session
     
     async def list_sessions(
@@ -325,6 +332,63 @@ class SessionManager:
                 logger.info(f"会话已重置: user={user_id[:10]}, chat={chat_id[:10]}")
                 return True
             return False
+    
+    async def get_session_by_short_id(
+        self,
+        user_id: str,
+        chat_id: str,
+        short_id: str,
+        bot_key: str | None = None
+    ) -> Optional[UserSession]:
+        """
+        根据 short_id 查找会话（不切换活跃状态）
+        
+        用于引用回复场景：临时借用某个会话的 session_id，
+        不影响当前活跃会话。
+        
+        Args:
+            user_id: 用户 ID
+            chat_id: 会话 ID
+            short_id: 会话短 ID
+            bot_key: Bot Key (可选)
+        
+        Returns:
+            找到的 UserSession，如果没找到返回 None
+        """
+        async with self._db_manager.get_session() as db:
+            # 构建基础查询条件
+            base_conditions = [
+                UserSession.user_id == user_id,
+                UserSession.chat_id == chat_id
+            ]
+            if bot_key:
+                base_conditions.append(UserSession.bot_key == bot_key)
+            
+            # 先尝试精确匹配 short_id
+            result = await db.execute(
+                select(UserSession)
+                .where(and_(
+                    *base_conditions,
+                    UserSession.short_id == short_id
+                ))
+            )
+            target = result.scalar_one_or_none()
+            
+            # 如果精确匹配没找到，尝试用 session_id 前缀匹配
+            if not target:
+                result = await db.execute(
+                    select(UserSession)
+                    .where(and_(
+                        *base_conditions,
+                        UserSession.session_id.like(f"{short_id}%")
+                    ))
+                )
+                target = result.scalar_one_or_none()
+            
+            if target:
+                logger.info(f"找到会话 (不切换): short_id={target.short_id}")
+            
+            return target
     
     async def change_session(
         self,
