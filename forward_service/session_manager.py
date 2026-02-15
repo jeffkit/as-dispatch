@@ -73,8 +73,11 @@ SLASH_COMMANDS = {
     # 会话管理（所有用户可用）
     "list": re.compile(r'^/(sess|s)\s*$', re.IGNORECASE),
     "reset": re.compile(r'^/(reset|r)\s*$', re.IGNORECASE),
-    # 允许会话 ID 后面有空格和消息内容
+    # /c <short_id> [message] - 允许会话 ID 后面有空格和消息内容
     "change": re.compile(r'^/(change|c)\s+([a-f0-9]{6,8})(?:\s+(.+))?$', re.IGNORECASE | re.DOTALL),
+    # /c 不带参数或参数无效 - 显示帮助
+    "change_help": re.compile(r'^/(change|c)\s*$', re.IGNORECASE),
+    "change_invalid": re.compile(r'^/(change|c)\s+(\S+)', re.IGNORECASE),
     
     # 系统状态命令（需要管理员权限）
     "ping": re.compile(r'^/(ping|p)\s*$', re.IGNORECASE),
@@ -420,6 +423,10 @@ class SessionManager:
                     short_id = match.group(2)
                     extra_msg = match.group(3).strip() if match.lastindex >= 3 and match.group(3) else None
                     return (cmd_type, short_id, extra_msg)
+                elif cmd_type in ("change_help", "change_invalid"):
+                    # /c 不带参数或参数无效
+                    invalid_arg = match.group(2) if cmd_type == "change_invalid" and match.lastindex >= 2 else None
+                    return (cmd_type, invalid_arg, None)
                 elif cmd_type == "bot":
                     # bot 命令：/bot <name> [url|key <value>]
                     # group(2) 是 bot 名称, group(3) 是字段类型, group(4) 是值

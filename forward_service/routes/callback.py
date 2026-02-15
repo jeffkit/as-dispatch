@@ -379,6 +379,21 @@ async def handle_callback(
                         )
                     return {"errcode": 0, "errmsg": "slash command handled"}
                 
+                elif cmd_type in ("change_help", "change_invalid"):
+                    # /c 不带参数或参数无效 - 显示帮助
+                    if cmd_type == "change_invalid":
+                        help_msg = f"❌ `{cmd_arg}` 不是有效的会话 ID\n\n使用 `/s` 查看可用会话\n示例: `/c abc12345`"
+                    else:
+                        help_msg = "💡 `/c <会话ID>` - 切换到指定会话\n\n使用 `/s` 查看可用会话列表\n示例: `/c abc12345`"
+                    await send_reply(
+                        chat_id=chat_id,
+                        message=help_msg,
+                        msg_type="text",
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
+                    )
+                    return {"errcode": 0, "errmsg": "slash command handled"}
+                
                 elif cmd_type == "change":
                     # /change <short_id> [message] - 切换会话，可选附带消息
                     target_session = await session_mgr.change_session(effective_user, chat_id, cmd_arg, bot_key=bot.bot_key)

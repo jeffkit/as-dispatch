@@ -70,6 +70,22 @@ class TestCallbackSlashCommands:
         assert result[0] == "change"
         assert result[1] == "abc12345"
 
+        # /c 不带参数 - 显示帮助
+        result = session_manager.parse_slash_command("/c")
+        assert result is not None
+        assert result[0] == "change_help"
+
+        # /c 带无效参数 - 显示错误
+        result = session_manager.parse_slash_command("/c xyz")
+        assert result is not None
+        assert result[0] == "change_invalid"
+        assert result[1] == "xyz"
+
+        # /change 不带参数
+        result = session_manager.parse_slash_command("/change")
+        assert result is not None
+        assert result[0] == "change_help"
+
     def test_parse_admin_commands(self, session_manager):
         """测试管理员命令解析"""
         # /ping
