@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 QUOTE_SEPARATOR = "\n------\n"
 SHORT_ID_PATTERN = re.compile(r'\[#([a-f0-9]{6,8})(?:\s+\S+)?\]')
 
+# 当消息只有图片没有文本时，使用占位文本（防御性处理）
+IMAGE_ONLY_PLACEHOLDER = "[图片]"
+
 
 @dataclass
 class ExtractedContent:
@@ -122,7 +125,10 @@ def extract_content(data: dict) -> ExtractedContent:
     elif msg_type == "image":
         image_data = data.get("image", {})
         image_url = image_data.get("image_url", "")
-        return ExtractedContent(text=None, image_urls=[image_url] if image_url else [])
+        image_urls = [image_url] if image_url else []
+        # 纯图片消息：设置占位文本，避免转发空 message 给 Agent
+        text = IMAGE_ONLY_PLACEHOLDER if image_urls else None
+        return ExtractedContent(text=text, image_urls=image_urls)
     
     elif msg_type == "mixed":
         mixed = data.get("mixed_message", {})
@@ -152,6 +158,10 @@ def extract_content(data: dict) -> ExtractedContent:
                     images.append(img_url)
         
         content = "\n".join(contents) if contents else None
+        # 混合消息中文本被 strip 为空但有图片时，设置占位文本
+        if not content and images:
+            content = IMAGE_ONLY_PLACEHOLDER
+            logger.info("混合消息文本为空但有图片，使用占位文本")
         return ExtractedContent(text=content, image_urls=images, quoted_short_id=quoted_short_id)
     
     return ExtractedContent(text=None, image_urls=[])

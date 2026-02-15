@@ -199,7 +199,7 @@ class TestCallbackMessageExtraction:
         assert result.image_urls == []
     
     def test_extract_image_message(self):
-        """测试提取图片消息"""
+        """测试提取图片消息 - 纯图片应使用占位文本"""
         from forward_service.utils import extract_content
         
         data = {
@@ -208,7 +208,7 @@ class TestCallbackMessageExtraction:
         }
         
         result = extract_content(data)
-        assert result.text is None
+        assert result.text == "[图片]"  # 占位文本，避免转发空 message
         assert result.image_urls == ["https://example.com/image.png"]
     
     def test_extract_mixed_message(self):

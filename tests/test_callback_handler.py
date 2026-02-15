@@ -306,7 +306,7 @@ class TestCallbackMessageExtraction:
         assert result.text == "direct message"
 
     def test_extract_image_message(self):
-        """测试提取图片消息"""
+        """测试提取图片消息 - 纯图片应使用占位文本"""
         from forward_service.utils import extract_content
 
         data = {
@@ -315,8 +315,21 @@ class TestCallbackMessageExtraction:
         }
 
         result = extract_content(data)
-        assert result.text is None
+        assert result.text == "[图片]"  # 占位文本，避免转发空 message
         assert result.image_urls == ["https://example.com/image.png"]
+
+    def test_extract_image_message_no_url(self):
+        """测试图片消息无 URL 时返回空"""
+        from forward_service.utils import extract_content
+
+        data = {
+            "msgtype": "image",
+            "image": {}
+        }
+
+        result = extract_content(data)
+        assert result.text is None
+        assert result.image_urls == []
 
     def test_extract_mixed_message(self):
         """测试提取混合消息"""
@@ -340,6 +353,31 @@ class TestCallbackMessageExtraction:
 
         result = extract_content(data)
         assert result.text == "text part"
+        assert result.image_urls == ["https://example.com/img.png"]
+
+    def test_extract_mixed_message_at_bot_only_with_image(self):
+        """测试混合消息：只有 @Bot 提及 + 图片（无额外文本）"""
+        from forward_service.utils import extract_content
+
+        data = {
+            "msgtype": "mixed",
+            "mixed_message": {
+                "msg_item": [
+                    {
+                        "msg_type": "text",
+                        "text": {"content": "@Bot "}
+                    },
+                    {
+                        "msg_type": "image",
+                        "image": {"image_url": "https://example.com/img.png"}
+                    }
+                ]
+            }
+        }
+
+        result = extract_content(data)
+        # @Bot 被 strip 后文本为空，但有图片，应使用占位文本
+        assert result.text == "[图片]"
         assert result.image_urls == ["https://example.com/img.png"]
 
     def test_extract_empty_message(self):

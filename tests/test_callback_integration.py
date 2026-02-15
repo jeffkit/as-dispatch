@@ -47,7 +47,7 @@ def create_callback_data(
     if msg_type == "text":
         data["text"] = {"content": f"@Bot {content}"}
     elif msg_type == "image":
-        data["image"] = {"url": image_url or "http://example.com/image.jpg"}
+        data["image"] = {"image_url": image_url or "http://example.com/image.jpg"}
     elif msg_type == "event":
         data["event"] = {"type": "enter_chat"}
     
