@@ -151,8 +151,12 @@ async def _forward_subdomain_request(request: Request, subdomain: str, path: str
     
     method = request.method
     headers = dict(request.headers)
-    headers.pop("host", None)
-    headers.pop("content-length", None)
+    # Remove hop-by-hop and proxy headers that should not be forwarded through tunnel
+    for h in ["host", "content-length", "connection", "upgrade",
+              "x-real-ip", "x-forwarded-for", "x-forwarded-proto",
+              "transfer-encoding", "te", "trailer", "keep-alive",
+              "proxy-connection", "proxy-authorization"]:
+        headers.pop(h, None)
     
     body = None
     if method in ("POST", "PUT", "PATCH"):
@@ -202,6 +206,15 @@ async def _forward_subdomain_request(request: Request, subdomain: str, path: str
                 domain=subdomain, method=method, path=path,
                 headers=headers, body=body, timeout=300.0,
             )
+            logger.info(f"[SubdomainProxy] Forward response: status={response.status}, body_type={type(response.body).__name__}, body_len={len(response.body) if response.body else 0}, error={response.error}")
+            
+            if response.error:
+                return FastAPIResponse(
+                    content=json.dumps({"error": response.error}),
+                    status_code=response.status or 502,
+                    media_type="application/json",
+                )
+            
             resp_headers = dict(response.headers) if response.headers else {}
             for h in ["connection", "keep-alive", "transfer-encoding", "te", "trailer",
                        "upgrade", "proxy-connection", "content-length", "content-encoding",
@@ -210,12 +223,15 @@ async def _forward_subdomain_request(request: Request, subdomain: str, path: str
                        "access-control-expose-headers", "access-control-max-age"]:
                 resp_headers.pop(h, None)
             content = response.body
-            if not isinstance(content, (str, bytes)):
+            if content is None:
+                content = b""
+            elif not isinstance(content, (str, bytes)):
                 content = json.dumps(content)
+            media_type = resp_headers.get("content-type", "application/octet-stream")
             return FastAPIResponse(
                 content=content, status_code=response.status,
                 headers=resp_headers,
-                media_type=resp_headers.get("content-type", "application/json"),
+                media_type=media_type,
             )
         except Exception as e:
             logger.error(f"[SubdomainProxy] Forward error: {e}", exc_info=True)
