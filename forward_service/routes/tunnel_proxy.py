@@ -119,44 +119,42 @@ async def _forward_to_tunnel(
                 timeout=300.0,
             )
             
+            logger.debug(f"[TunnelProxy] Forward response: status={response.status}, body_type={type(response.body).__name__}, body_len={len(response.body) if response.body else 0}, error={response.error}")
+            
+            if response.error:
+                return Response(
+                    content=json.dumps({"error": response.error}),
+                    status_code=response.status or 502,
+                    media_type="application/json",
+                )
+            
             # 构建响应头，过滤掉不应转发的头
             resp_headers = dict(response.headers) if response.headers else {}
             
-            # 过滤 hop-by-hop 头（HTTP/1.1 特有，HTTP/2 不兼容）
-            # 以及 CORS 头（由 FastAPI 中间件统一处理）
             headers_to_remove = [
-                # hop-by-hop headers (不兼容 HTTP/2)
-                "connection",
-                "keep-alive",
-                "transfer-encoding",
-                "te",
-                "trailer",
-                "upgrade",
-                "proxy-connection",
-                # content-length 由 FastAPI Response 自动计算
-                "content-length",
-                # content-encoding 可能导致长度不匹配
-                "content-encoding",
-                # CORS 头（由中间件统一处理）
-                "access-control-allow-origin",
-                "access-control-allow-methods",
-                "access-control-allow-headers",
-                "access-control-allow-credentials",
-                "access-control-expose-headers",
-                "access-control-max-age",
+                "connection", "keep-alive", "transfer-encoding", "te",
+                "trailer", "upgrade", "proxy-connection",
+                "content-length", "content-encoding",
+                "access-control-allow-origin", "access-control-allow-methods",
+                "access-control-allow-headers", "access-control-allow-credentials",
+                "access-control-expose-headers", "access-control-max-age",
             ]
             for header in headers_to_remove:
                 resp_headers.pop(header, None)
             
             content = response.body
-            if not isinstance(content, (str, bytes)):
+            if content is None:
+                content = b""
+            elif not isinstance(content, (str, bytes)):
                 content = json.dumps(content)
+            
+            media_type = resp_headers.get("content-type", "application/octet-stream")
             
             return Response(
                 content=content,
                 status_code=response.status,
                 headers=resp_headers,
-                media_type=resp_headers.get("content-type", "application/json"),
+                media_type=media_type,
             )
         except Exception as e:
             logger.error(f"[TunnelProxy] 转发请求失败: {e}", exc_info=True)
