@@ -21,11 +21,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+from fastapi import Request
+
 from .config import config
 from .database import database_lifespan, get_db_manager, get_database_url
 from .session_manager import init_session_manager
 from .routes import admin_router, bots_router, callback_router, tunnel_proxy_router
-from .tunnel import tunnel_server, init_tunnel_server
+from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
 
 # 配置日志
 logging.basicConfig(
@@ -117,12 +119,122 @@ app.include_router(tunnel_proxy_router)   # 隧道代理路由 (/t/{domain}/...)
 # 静态文件目录
 STATIC_DIR = Path(__file__).parent / "static"
 
+# 隧道域名配置（用于子域名路由）
+_tunnel_config = load_tunnel_config()
+TUNNEL_BASE_DOMAIN = _tunnel_config.get("domain", "tunnel")
+
+
+def _extract_subdomain(host: str) -> str | None:
+    """从 Host 头中提取子域名"""
+    host = host.split(":")[0]
+    if host == TUNNEL_BASE_DOMAIN:
+        return None
+    suffix = f".{TUNNEL_BASE_DOMAIN}"
+    if host.endswith(suffix):
+        subdomain = host[:-len(suffix)]
+        if "." not in subdomain:
+            return subdomain
+    return None
+
+
+async def _forward_subdomain_request(request: Request, subdomain: str, path: str):
+    """将子域名请求转发到隧道（复用 tunnel_proxy 的逻辑）"""
+    import json
+    from fastapi.responses import StreamingResponse, Response as FastAPIResponse
+    
+    if not tunnel_server.manager.is_connected(subdomain):
+        return FastAPIResponse(
+            content=json.dumps({"error": f"Tunnel not connected: {subdomain}"}),
+            status_code=503,
+            media_type="application/json",
+        )
+    
+    method = request.method
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+    
+    body = None
+    if method in ("POST", "PUT", "PATCH"):
+        body_bytes = await request.body()
+        if body_bytes:
+            try:
+                body = json.loads(body_bytes)
+            except json.JSONDecodeError:
+                body = body_bytes.decode("utf-8", errors="replace")
+    
+    accept_header = headers.get("accept", "")
+    is_sse = "text/event-stream" in accept_header
+    
+    logger.info(f"[SubdomainProxy] {method} {subdomain}{path} (SSE={is_sse})")
+    
+    if is_sse:
+        from tunely import StreamStartMessage, StreamChunkMessage, StreamEndMessage
+        
+        async def stream_gen():
+            try:
+                async for msg in tunnel_server.forward_stream(
+                    domain=subdomain, method=method, path=path,
+                    headers=headers, body=body, timeout=300.0,
+                ):
+                    if isinstance(msg, StreamStartMessage):
+                        yield f"event: start\ndata: {{}}\n\n"
+                    elif isinstance(msg, StreamChunkMessage):
+                        yield f"data: {msg.data}\n\n"
+                    elif isinstance(msg, StreamEndMessage):
+                        if msg.error:
+                            yield f"event: error\ndata: {msg.error}\n\n"
+                        else:
+                            yield f"event: done\ndata: {{}}\n\n"
+                        break
+            except Exception as e:
+                logger.error(f"[SubdomainProxy] Stream error: {e}", exc_info=True)
+                yield f"event: error\ndata: {str(e)}\n\n"
+        
+        return StreamingResponse(
+            stream_gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+    else:
+        try:
+            response = await tunnel_server.forward(
+                domain=subdomain, method=method, path=path,
+                headers=headers, body=body, timeout=300.0,
+            )
+            resp_headers = dict(response.headers) if response.headers else {}
+            for h in ["connection", "keep-alive", "transfer-encoding", "te", "trailer",
+                       "upgrade", "proxy-connection", "content-length", "content-encoding",
+                       "access-control-allow-origin", "access-control-allow-methods",
+                       "access-control-allow-headers", "access-control-allow-credentials",
+                       "access-control-expose-headers", "access-control-max-age"]:
+                resp_headers.pop(h, None)
+            content = response.body
+            if not isinstance(content, (str, bytes)):
+                content = json.dumps(content)
+            return FastAPIResponse(
+                content=content, status_code=response.status,
+                headers=resp_headers,
+                media_type=resp_headers.get("content-type", "application/json"),
+            )
+        except Exception as e:
+            logger.error(f"[SubdomainProxy] Forward error: {e}", exc_info=True)
+            return FastAPIResponse(
+                content=json.dumps({"error": f"Forward failed: {str(e)}"}),
+                status_code=502,
+                media_type="application/json",
+            )
+
 
 # ============== 基础路由 ==============
 
 @app.get("/")
-async def root() -> dict:
-    """根路径"""
+async def root(request: Request) -> dict:
+    """根路径 - 支持子域名转发"""
+    host = request.headers.get("host", "")
+    subdomain = _extract_subdomain(host)
+    if subdomain:
+        return await _forward_subdomain_request(request, subdomain, "/")
     return {
         "service": "Forward Service",
         "version": "3.0.0",
@@ -141,6 +253,33 @@ async def health() -> dict:
         "bots_count": len(config.bots),
         "version": "3.0.0"
     }
+
+
+# ============== 子域名模式路由（通用 catch-all） ==============
+
+@app.api_route(
+    "/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+)
+async def catch_all(request: Request, path: str):
+    """通用路由 - 子域名转发"""
+    import json
+    from fastapi.responses import Response as FastAPIResponse
+    
+    host = request.headers.get("host", "")
+    subdomain = _extract_subdomain(host)
+    
+    if subdomain:
+        full_path = f"/{path}"
+        if request.query_params:
+            full_path += f"?{request.query_params}"
+        return await _forward_subdomain_request(request, subdomain, full_path)
+    
+    return FastAPIResponse(
+        content=json.dumps({"detail": "Not Found"}),
+        status_code=404,
+        media_type="application/json",
+    )
 
 
 # ============== 入口点 ==============
