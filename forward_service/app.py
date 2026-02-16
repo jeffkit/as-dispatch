@@ -228,8 +228,8 @@ async def _forward_subdomain_request(request: Request, subdomain: str, path: str
 
 # ============== 基础路由 ==============
 
-@app.get("/")
-async def root(request: Request) -> dict:
+@app.api_route("/", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def root(request: Request):
     """根路径 - 支持子域名转发"""
     host = request.headers.get("host", "")
     subdomain = _extract_subdomain(host)
