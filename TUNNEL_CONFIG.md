@@ -13,6 +13,7 @@ export TUNNEL_DOMAIN="tunnel"
 export TUNNEL_WS_URL="ws://21.6.243.90:80/ws/tunnel"
 export TUNNEL_ADMIN_API_KEY="your-admin-api-key"
 export WS_TUNNEL_INSTRUCTION="接入须知说明"
+export TUNNEL_JWT_SECRET="your-jwt-shared-secret"
 ```
 
 ### 2. JSON 配置文件（推荐）
@@ -33,7 +34,8 @@ export TUNNEL_CONFIG_FILE="/path/to/tunnel_config.json"
   "domain": "tunnel",
   "ws_url": "ws://21.6.243.90:80/ws/tunnel",
   "admin_api_key": null,
-  "instruction": "腾讯司内的 .tunnel 隧道域名仅用于企微接入的回调用，暂不支持直接通过隧道域名访问。如需在企微内接入，请在群内添加 Agent Studio 机器人，私信它获取接入指南，或详询 @kongjie"
+  "instruction": "腾讯司内的 .tunnel 隧道域名仅用于企微接入的回调用，暂不支持直接通过隧道域名访问。如需在企微内接入，请在群内添加 Agent Studio 机器人，私信它获取接入指南，或详询 @kongjie",
+  "jwt_secret": null
 }
 ```
 
@@ -46,6 +48,7 @@ export TUNNEL_CONFIG_FILE="/path/to/tunnel_config.json"
 | `ws_url` | WebSocket 完整 URL | `ws://21.6.243.90:80/ws/tunnel` | `TUNNEL_WS_URL` |
 | `admin_api_key` | 管理 API 密钥 | `null` | `TUNNEL_ADMIN_API_KEY` |
 | `instruction` | 接入须知说明 | `null` | `WS_TUNNEL_INSTRUCTION` |
+| `jwt_secret` | JWT 共享密钥（设置后创建隧道需要 Bearer JWT 认证） | `null` | `TUNNEL_JWT_SECRET` |
 
 ## 使用建议
 
@@ -73,10 +76,14 @@ curl http://localhost:8083/api/info
 ```json
 {
   "name": "Tunely Server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "domain": {...},
   "websocket": {...},
   "protocols": [...],
+  "auth": {
+    "required": true,
+    "type": "bearer"
+  },
   "instruction": "你的须知内容"
 }
 ```
