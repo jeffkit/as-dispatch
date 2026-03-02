@@ -264,9 +264,6 @@ async def health() -> dict:
     errors = config.validate()
     return {
         "status": "healthy" if not errors else "unhealthy",
-        "config_errors": errors,
-        "default_bot_key": config.default_bot_key[:10] + "..." if config.default_bot_key else None,
-        "bots_count": len(config.bots),
         "version": "3.0.0"
     }
 
