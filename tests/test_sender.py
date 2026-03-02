@@ -20,7 +20,7 @@ class TestSendToWecom:
         mock_response.json = MagicMock(return_value={"errcode": 0, "errmsg": "ok"})
         mock_bot.text = MagicMock(return_value=mock_response)
 
-        with patch('forward_service.sender.Bot', return_value=mock_bot):
+        with patch('pigeon.Bot', return_value=mock_bot):
             result = send_to_wecom(
                 message="Hello World",
                 chat_id="test_chat_123",
@@ -40,7 +40,7 @@ class TestSendToWecom:
         mock_response.json = MagicMock(return_value={"errcode": 0, "errmsg": "ok"})
         mock_bot.markdown = MagicMock(return_value=mock_response)
 
-        with patch('forward_service.sender.Bot', return_value=mock_bot):
+        with patch('pigeon.Bot', return_value=mock_bot):
             result = send_to_wecom(
                 message="# Hello\n\n**World**",
                 chat_id="test_chat_123",
@@ -74,7 +74,7 @@ class TestSendToWecom:
         mock_response = {"errcode": 0, "errmsg": "ok"}
         mock_bot.text = MagicMock(return_value=mock_response)
 
-        with patch('forward_service.sender.Bot', return_value=mock_bot), \
+        with patch('pigeon.Bot', return_value=mock_bot), \
              patch('forward_service.sender.config') as mock_config:
             mock_config.bot_key = "default_key"
 
@@ -99,7 +99,7 @@ class TestSendToWecom:
         })
         mock_bot.text = MagicMock(return_value=mock_response)
 
-        with patch('forward_service.sender.Bot', return_value=mock_bot):
+        with patch('pigeon.Bot', return_value=mock_bot):
             result = send_to_wecom(
                 message="Hello",
                 chat_id="test_chat",
@@ -116,7 +116,7 @@ class TestSendToWecom:
         mock_bot = MagicMock()
         mock_bot.text = MagicMock(side_effect=Exception("Network error"))
 
-        with patch('forward_service.sender.Bot', return_value=mock_bot):
+        with patch('pigeon.Bot', return_value=mock_bot):
             with pytest.raises(Exception, match="Network error"):
                 send_to_wecom(
                     message="Hello",
@@ -132,7 +132,7 @@ class TestSendToWecom:
         mock_bot = MagicMock()
         mock_bot.text = MagicMock(return_value={"errcode": 0, "errmsg": "ok"})
 
-        with patch('forward_service.sender.Bot', return_value=mock_bot):
+        with patch('pigeon.Bot', return_value=mock_bot):
             result = send_to_wecom(
                 message="Hello",
                 chat_id="test_chat",
@@ -150,7 +150,7 @@ class TestSendToWecom:
         mock_response = "plain string response"
         mock_bot.text = MagicMock(return_value=mock_response)
 
-        with patch('forward_service.sender.Bot', return_value=mock_bot):
+        with patch('pigeon.Bot', return_value=mock_bot):
             result = send_to_wecom(
                 message="Hello",
                 chat_id="test_chat",
@@ -185,7 +185,8 @@ class TestSendReply:
                 message="Hello",
                 chat_id="test_chat",
                 msg_type="text",
-                bot_key="test_key"
+                bot_key="test_key",
+                mentioned_list=None,
             )
 
     @pytest.mark.asyncio
@@ -243,7 +244,8 @@ class TestSendReply:
                 message="# Title\n\n**Bold**",
                 chat_id="test_chat",
                 msg_type="markdown",
-                bot_key="test_key"
+                bot_key="test_key",
+                mentioned_list=None,
             )
 
     @pytest.mark.asyncio
@@ -263,5 +265,6 @@ class TestSendReply:
                 message="Hello",
                 chat_id="test_chat",
                 msg_type="text",
-                bot_key=None
+                bot_key=None,
+                mentioned_list=None,
             )

@@ -5,11 +5,15 @@ Forward Service Bot 管理 API 单元测试
 """
 import pytest
 import pytest_asyncio
+from unittest.mock import patch
 
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 
 from forward_service.models import Chatbot
+
+# 测试用的 admin key
+TEST_ADMIN_KEY = "test-bot-api-key"
 
 
 # ============== 测试 Fixtures ==============
@@ -34,10 +38,15 @@ async def initialized_app(mock_db_manager):
 
 @pytest_asyncio.fixture
 async def test_client(initialized_app):
-    """创建测试客户端"""
-    transport = ASGITransport(app=initialized_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    """创建携带正确 X-Admin-Key 的测试客户端"""
+    with patch("forward_service.auth._ADMIN_KEY", TEST_ADMIN_KEY):
+        transport = ASGITransport(app=initialized_app)
+        async with AsyncClient(
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Admin-Key": TEST_ADMIN_KEY},
+        ) as client:
+            yield client
 
 
 @pytest_asyncio.fixture

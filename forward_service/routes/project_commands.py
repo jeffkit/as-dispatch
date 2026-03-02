@@ -26,7 +26,8 @@ ADD_PROJECT_RE = re.compile(
     r'^/(?:add-project|ap)\s+(\S+)\s+(\S+)'  # project_id, url
     r'(?:\s+--api-key\s+(\S+))?'       # optional: api_key
     r'(?:\s+--name\s+(.+?))?'          # optional: project_name
-    r'(?:\s+--timeout\s+(\d+))?$',     # optional: timeout
+    r'(?:\s+--timeout\s+(\d+))?'       # optional: timeout
+    r'(?:\s+--default)?$',             # optional: --default flag
     re.IGNORECASE
 )
 
@@ -37,6 +38,11 @@ LIST_PROJECTS_RE = re.compile(
 
 USE_PROJECT_RE = re.compile(
     r'^/(?:use|u)\s+(\S+)$',
+    re.IGNORECASE
+)
+
+SET_DEFAULT_RE = re.compile(
+    r'^/(?:set-default|sd)\s+(\S+)$',
     re.IGNORECASE
 )
 
@@ -129,7 +135,8 @@ async def handle_add_project(
                     return False, "\n".join(lines)
 
             # 4. 创建项目配置（测试成功或隧道模式允许保存）
-            # 如果是第一个项目，自动设为默认
+            # 如果是第一个项目或指定了 --default，自动设为默认
+            force_default = '--default' in message.lower()
             _project = await repo.create(
                 bot_key=bot_key,
                 chat_id=chat_id,
@@ -138,7 +145,7 @@ async def handle_add_project(
                 api_key=api_key,
                 project_name=project_name,
                 timeout=timeout,
-                is_default=is_first_project,  # 首个项目自动设为默认
+                is_default=is_first_project or force_default,  # 首个项目或指定 --default 时自动设为默认
                 enabled=True
             )
 
@@ -602,6 +609,7 @@ def is_project_command(message: str) -> bool:
         ADD_PROJECT_RE.match(message) or
         LIST_PROJECTS_RE.match(message) or
         USE_PROJECT_RE.match(message) or
+        SET_DEFAULT_RE.match(message) or
         REMOVE_PROJECT_RE.match(message) or
         CURRENT_PROJECT_RE.match(message)
     )
@@ -644,6 +652,12 @@ async def handle_project_command(
     # /current-project or /current
     elif CURRENT_PROJECT_RE.match(message):
         return await handle_current_project(bot_key, chat_id)
+
+    # /set-default
+    elif SET_DEFAULT_RE.match(message):
+        match = SET_DEFAULT_RE.match(message)
+        project_id = match.group(1)
+        return await handle_set_default(bot_key, chat_id, project_id)
 
     # /remove-project
     elif REMOVE_PROJECT_RE.match(message):

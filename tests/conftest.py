@@ -15,6 +15,23 @@ if 'pigeon' not in sys.modules:
     sys.modules['pigeon'] = MagicMock()
     sys.modules['pigeon.Bot'] = MagicMock()
 
+# Mock tunely 模块以避免导入错误（tunely 在测试环境中不可用）
+if 'tunely' not in sys.modules:
+    tunely_mock = MagicMock()
+    tunely_mock.TunnelServer = MagicMock()
+    tunely_mock.TunnelServerConfig = MagicMock()
+    tunely_mock.TunnelClient = MagicMock()
+    tunely_mock.TunnelClientConfig = MagicMock()
+    tunely_mock.StreamStartMessage = MagicMock()
+    tunely_mock.StreamChunkMessage = MagicMock()
+    tunely_mock.StreamEndMessage = MagicMock()
+    sys.modules['tunely'] = tunely_mock
+    # 注册子模块，避免 `from tunely.repository import ...` 报错
+    sys.modules['tunely.repository'] = MagicMock()
+    sys.modules['tunely.protocol'] = MagicMock()
+    sys.modules['tunely.server'] = MagicMock()
+    sys.modules['tunely.client'] = MagicMock()
+
 # 将包目录添加到 Python 路径
 pkg_root = Path(__file__).parent.parent
 if str(pkg_root) not in sys.path:
@@ -86,6 +103,10 @@ async def mock_db_manager(test_db_engine):
         @property
         def engine(self):
             return self._engine
+
+        @property
+        def database_url(self):
+            return "sqlite+aiosqlite:///:memory:"
         
         @property
         def session_factory(self):
@@ -109,6 +130,22 @@ async def mock_db_manager(test_db_engine):
     
     # 恢复原始的 db_manager
     db_module.db_manager = original_db_manager
+
+
+@pytest.fixture(autouse=True)
+def clear_dedup_cache():
+    """每个测试前清空消息去重缓存，防止测试间互相干扰"""
+    try:
+        from forward_service.routes.callback import _dedup_cache
+        _dedup_cache.clear()
+    except ImportError:
+        pass
+    yield
+    try:
+        from forward_service.routes.callback import _dedup_cache
+        _dedup_cache.clear()
+    except ImportError:
+        pass
 
 
 @pytest.fixture(autouse=True)

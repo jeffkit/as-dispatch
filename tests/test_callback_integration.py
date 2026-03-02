@@ -60,7 +60,8 @@ def create_mock_bot(
     url: str = "https://api.test.com/messages",
     api_key: str = "test_api_key",
     enabled: bool = True,
-    access_mode: str = "allow_all"
+    access_mode: str = "allow_all",
+    owner_id: str = "test_owner"
 ) -> BotConfig:
     """创建测试用的 Bot 配置"""
     forward_config = ForwardConfig(
@@ -78,17 +79,19 @@ def create_mock_bot(
         bot_key=bot_key,
         enabled=enabled,
         forward_config=forward_config,
-        access_control=access_control
+        access_control=access_control,
+        owner_id=owner_id,
     )
 
 
 @pytest.fixture
 def mock_db_manager():
-    """创建 mock 数据库管理器"""
+    """创建 mock 数据库管理器，并替换全局 db_manager"""
+    import forward_service.database as db_module
     from contextlib import asynccontextmanager
-    
+
     manager = MagicMock()
-    
+
     # 创建异步上下文管理器
     @asynccontextmanager
     async def mock_get_session():
@@ -97,9 +100,15 @@ def mock_db_manager():
         mock_session.commit = AsyncMock()
         mock_session.flush = AsyncMock()
         yield mock_session
-    
+
     manager.get_session = mock_get_session
-    return manager
+    manager.database_url = "sqlite+aiosqlite:///:memory:"
+
+    # 替换全局 db_manager，使 get_db_manager() 返回此 mock
+    original = db_module.db_manager
+    db_module.db_manager = manager
+    yield manager
+    db_module.db_manager = original
 
 
 class TestHandleCallbackAuth:
@@ -123,7 +132,7 @@ class TestHandleCallbackAuth:
         with patch('forward_service.routes.callback.config') as mock_config, \
              patch('forward_service.routes.callback.send_reply') as mock_send, \
              patch('forward_service.routes.callback.extract_content') as mock_extract, \
-             patch('forward_service.routes.callback.forward_to_agent_with_bot') as mock_forward, \
+             patch('forward_service.routes.callback.forward_to_agent_with_user_project') as mock_forward, \
              patch('forward_service.routes.callback.add_pending_request') as mock_add_pending, \
              patch('forward_service.routes.callback.remove_pending_request') as mock_remove_pending, \
              patch('forward_service.routes.callback.get_session_manager', return_value=mock_session_mgr):
@@ -131,7 +140,7 @@ class TestHandleCallbackAuth:
             mock_config.callback_auth_key = "x-api-key"
             mock_config.callback_auth_value = "test_secret"
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
-            mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
+            mock_config.get_bot = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
             mock_extract.return_value = ExtractedContent(text="Hello", image_urls=[])
             mock_forward.return_value = AgentResult(
@@ -200,11 +209,19 @@ class TestHandleCallbackBotConfig:
             
             mock_config.callback_auth_key = None
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="unknown_key")
-            mock_config.get_bot_or_default = MagicMock(return_value=None)
+            mock_config.get_bot = MagicMock(return_value=None)
+            mock_config.default_bot_key = None
+            mock_config.reload_config = AsyncMock()
             mock_send.return_value = {"success": True}
 
-            request = MockRequest(create_callback_data())
-            result = await handle_callback(request)
+            # 模拟 repository 调用（自动创建骨架 Bot）
+            mock_bot_repo = MagicMock()
+            mock_bot_repo.get_by_bot_key = AsyncMock(return_value=None)
+            mock_bot_repo.create = AsyncMock()
+
+            with patch('forward_service.repository.get_chatbot_repository', return_value=mock_bot_repo):
+                request = MockRequest(create_callback_data())
+                result = await handle_callback(request)
 
             assert result["errcode"] == 0
             assert "no bot config" in result["errmsg"]
@@ -228,8 +245,8 @@ class TestHandleCallbackAccessControl:
             mock_config.callback_auth_key = None
             mock_config.default_bot_key = "default"
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
-            mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
-            mock_config.get_bot = MagicMock(return_value=None)  # 无默认 bot
+            # get_bot returns mock_bot for the main bot, None for default bot lookup
+            mock_config.get_bot = MagicMock(side_effect=lambda key: mock_bot if key == "test_key" else None)
             mock_config.check_access = MagicMock(return_value=(False, "Not in whitelist"))
             mock_send.return_value = {"success": True}
 
@@ -327,19 +344,26 @@ class TestHandleCallbackForward:
             project_id=None
         )
 
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get_active_session = AsyncMock(return_value=None)
+        mock_session_mgr.get_session_by_short_id = AsyncMock(return_value=None)
+        mock_session_mgr.parse_slash_command = MagicMock(return_value=None)
+        mock_session_mgr.record_session = AsyncMock(return_value=None)
+
         with patch('forward_service.routes.callback.config') as mock_config, \
              patch('forward_service.routes.callback.send_reply') as mock_send, \
              patch('forward_service.routes.callback.extract_content') as mock_extract, \
-             patch('forward_service.routes.callback.forward_to_agent_with_bot') as mock_forward, \
+             patch('forward_service.routes.callback.forward_to_agent_with_user_project') as mock_forward, \
              patch('forward_service.routes.callback.add_request_log') as mock_add_log, \
              patch('forward_service.routes.callback.update_request_log') as mock_update_log, \
              patch('forward_service.routes.callback.add_pending_request') as mock_add_pending, \
-             patch('forward_service.routes.callback.remove_pending_request') as mock_remove_pending:
+             patch('forward_service.routes.callback.remove_pending_request') as mock_remove_pending, \
+             patch('forward_service.routes.callback.get_session_manager', return_value=mock_session_mgr):
             
             mock_config.callback_auth_key = None
             mock_config.timeout = 60
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
-            mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
+            mock_config.get_bot = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
             mock_extract.return_value = ExtractedContent(text="Hello", image_urls=[])
             mock_forward.return_value = mock_result
@@ -363,26 +387,33 @@ class TestHandleCallbackForward:
         init_session_manager(mock_db_manager)
         mock_bot = create_mock_bot()
 
+        mock_session_mgr = MagicMock()
+        mock_session_mgr.get_active_session = AsyncMock(return_value=None)
+        mock_session_mgr.get_session_by_short_id = AsyncMock(return_value=None)
+        mock_session_mgr.parse_slash_command = MagicMock(return_value=None)
+        mock_session_mgr.record_session = AsyncMock(return_value=None)
+
         with patch('forward_service.routes.callback.config') as mock_config, \
              patch('forward_service.routes.callback.send_reply') as mock_send, \
              patch('forward_service.routes.callback.extract_content') as mock_extract, \
-             patch('forward_service.routes.callback.forward_to_agent_with_bot') as mock_forward, \
+             patch('forward_service.routes.callback.forward_to_agent_with_user_project') as mock_forward, \
              patch('forward_service.routes.callback.add_request_log') as mock_add_log, \
              patch('forward_service.routes.callback.update_request_log') as mock_update_log, \
              patch('forward_service.routes.callback.add_pending_request') as mock_add_pending, \
-             patch('forward_service.routes.callback.remove_pending_request') as mock_remove_pending:
+             patch('forward_service.routes.callback.remove_pending_request') as mock_remove_pending, \
+             patch('forward_service.routes.callback.get_session_manager', return_value=mock_session_mgr):
             
             mock_config.callback_auth_key = None
             mock_config.timeout = 60
             mock_config.extract_bot_key_from_webhook_url = MagicMock(return_value="test_key")
-            mock_config.get_bot_or_default = MagicMock(return_value=mock_bot)
+            mock_config.get_bot = MagicMock(return_value=mock_bot)
             mock_config.check_access = MagicMock(return_value=(True, ""))
             mock_extract.return_value = ExtractedContent(text="Hello", image_urls=[])
             mock_forward.return_value = None  # 转发失败
             mock_send.return_value = {"success": True}
             mock_add_log.return_value = 1
 
-            request = MockRequest(create_callback_data(content="Hello"))
+            request = MockRequest(create_callback_data(content="Forward failure test message"))
             result = await handle_callback(request)
 
             assert result["errcode"] == 0
