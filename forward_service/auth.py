@@ -1,27 +1,25 @@
 """
-Admin API 鉴权模块
+鉴权模块
 
-使用 AS_ADMIN_KEY 环境变量保护 /admin/* 路由。
-Header 名称 X-Admin-Key 与 as-enterprise ConfigSyncService 保持一致。
+提供两套 FastAPI Depends 鉴权：
+
+1. require_admin_key  —  X-Admin-Key 保护 /admin/* 路由（内部管理）
+2. require_enterprise_jwt  —  Bearer JWT 保护 /api/* 路由（用户工具调用）
 
 向后兼容策略：
-- 未设置 AS_ADMIN_KEY 时：跳过鉴权（内网部署兼容，与旧版行为一致）
-- 已设置 AS_ADMIN_KEY 时：强制校验 X-Admin-Key 请求头
-
-使用方式（FastAPI Depends）：
-    AdminAuth = Annotated[None, Depends(require_admin_key)]
-
-    @router.get("")
-    async def my_route(_auth: AdminAuth) -> dict:
-        ...
+- 未设置对应环境变量时：跳过鉴权（内网模式）
+- 已设置且校验失败：401 Unauthorized
 """
 import os
 import logging
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, Request, status
 
 logger = logging.getLogger(__name__)
 
-# 从环境变量读取（对齐 as-enterprise 的 AS_ADMIN_API_KEY 命名规范）
+# ============================================================
+# Admin Key 鉴权（/admin/* 路由）
+# ============================================================
+
 _ADMIN_KEY: str = os.getenv("AS_ADMIN_KEY", "")
 
 if _ADMIN_KEY:
@@ -41,11 +39,10 @@ async def require_admin_key(
     """
     FastAPI Depends：校验 X-Admin-Key 请求头。
 
-    - 未配置 AS_ADMIN_KEY 环境变量时 → 跳过鉴权（向后兼容，内网模式）
+    - 未配置 AS_ADMIN_KEY 时 → 跳过鉴权（向后兼容，内网模式）
     - 已配置且 Key 不匹配 → 401 Unauthorized
     """
     if not _ADMIN_KEY:
-        # 内网/未配置模式：跳过鉴权，与旧版行为一致
         return
 
     if x_admin_key != _ADMIN_KEY:
@@ -53,4 +50,46 @@ async def require_admin_key(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的 X-Admin-Key",
+        )
+
+
+# ============================================================
+# Enterprise JWT 鉴权（/api/* 路由）
+# ============================================================
+
+_JWT_SECRET: str = os.getenv("JWT_SECRET_KEY", "")
+
+if _JWT_SECRET:
+    logger.info("Enterprise JWT 鉴权已启用（JWT_SECRET_KEY 已配置）")
+else:
+    logger.warning("JWT_SECRET_KEY 未配置，/api/* 端点跳过 JWT 鉴权（内网模式）")
+
+
+async def require_enterprise_jwt(request: Request) -> dict:
+    """
+    FastAPI Depends：校验 Authorization: Bearer <enterprise_token>。
+
+    - 未配置 JWT_SECRET_KEY 时 → 跳过鉴权，返回空 payload（内网模式）
+    - 校验失败 → 401 Unauthorized
+    """
+    if not _JWT_SECRET:
+        return {}
+
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="需要 Authorization: Bearer <as-enterprise-token>",
+        )
+
+    token = auth[7:]
+    try:
+        import jwt as pyjwt
+        payload = pyjwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except Exception as exc:
+        logger.warning("JWT 验证失败: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token 无效或已过期，请重新登录 as-enterprise ({exc})",
         )
