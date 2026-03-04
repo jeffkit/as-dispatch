@@ -120,10 +120,9 @@ app.include_router(tunnel_server.router)  # 隧道服务路由
 app.include_router(tunnel_proxy_router)   # 隧道代理路由 (/t/{domain}/...)
 
 # MCP HTTP 端点
-# 配置 AS_ENTERPRISE_JWT_SECRET（= as-enterprise SECRET_KEY）时启用 JWT 鉴权
+# 配置 JWT_SECRET_KEY 时启用 JWT 鉴权（与 as-enterprise 共享同一个密钥）
 # 未配置时跳过鉴权（内网/开发模式）
-_enterprise_jwt_secret = os.getenv("AS_ENTERPRISE_JWT_SECRET")
-app.mount("/mcp", get_mcp_http_app(jwt_secret=_enterprise_jwt_secret))
+app.mount("/mcp", get_mcp_http_app(jwt_secret=os.getenv("JWT_SECRET_KEY")))
 
 # 静态文件目录
 STATIC_DIR = Path(__file__).parent / "static"

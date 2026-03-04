@@ -60,7 +60,7 @@ def load_tunnel_config() -> dict:
         config["admin_api_key"] = admin_api_key
     if instruction := os.getenv("WS_TUNNEL_INSTRUCTION"):
         config["instruction"] = instruction
-    if jwt_secret := os.getenv("TUNNEL_JWT_SECRET"):
+    if jwt_secret := os.getenv("JWT_SECRET_KEY"):
         config["jwt_secret"] = jwt_secret
     
     return config

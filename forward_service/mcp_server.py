@@ -13,8 +13,8 @@ as-dispatch MCP Server
       uv run python -m forward_service.mcp_server
 
 环境变量（HTTP 模式）：
-    AS_ENTERPRISE_JWT_SECRET  as-enterprise SECRET_KEY（同一个值），用于验证用户身份
-                               未配置时跳过鉴权（内网模式）
+    JWT_SECRET_KEY  与 as-enterprise 共享的 JWT 签名密钥，用于验证用户身份
+                    未配置时跳过鉴权（内网模式）
 
 环境变量（仅 stdio 模式需要）：
     AS_DISPATCH_URL  as-dispatch 服务地址（默认 http://localhost:8083）
@@ -382,12 +382,12 @@ def get_http_app(jwt_secret: str | None = None) -> "ASGIApp":
     返回可挂载到 FastAPI 的 ASGI app。
 
     Args:
-        jwt_secret: as-enterprise SECRET_KEY（AS_ENTERPRISE_JWT_SECRET 环境变量）。
+        jwt_secret: 与 as-enterprise 共享的 JWT 签名密钥（JWT_SECRET_KEY 环境变量）。
                     传入时启用 JWT 鉴权；未传入时跳过鉴权（内网/开发模式）。
 
     用法（在 app.py 中）：
         from .mcp_server import get_http_app
-        app.mount("/mcp", get_http_app(jwt_secret=os.getenv("AS_ENTERPRISE_JWT_SECRET")))
+        app.mount("/mcp", get_http_app(jwt_secret=os.getenv("JWT_SECRET_KEY")))
     """
     middleware = None
     if jwt_secret:
