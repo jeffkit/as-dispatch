@@ -25,6 +25,7 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import FastMCP
+from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -388,11 +389,9 @@ def get_http_app(jwt_secret: str | None = None) -> "ASGIApp":
         from .mcp_server import get_http_app
         app.mount("/mcp", get_http_app(jwt_secret=os.getenv("AS_ENTERPRISE_JWT_SECRET")))
     """
-    middleware = []
+    middleware = None
     if jwt_secret:
-        middleware.append(
-            lambda app: EnterpriseJWTMiddleware(app, jwt_secret)
-        )
+        middleware = [Middleware(EnterpriseJWTMiddleware, jwt_secret=jwt_secret)]
         logger.info("MCP /mcp 端点：已启用 as-enterprise JWT 鉴权")
     else:
         logger.warning(
