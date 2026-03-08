@@ -645,7 +645,7 @@ class ConfigDB:
                 bot = await bot_repo.create(
                     bot_key=data["bot_key"],
                     name=data["name"],
-                    url_template=data.get("target_url", ""),  # 可选，用户可通过绑定项目指定
+                    url_template=data.get("target_url", ""),
                     api_key=data.get("api_key", ""),
                     timeout=data.get("timeout", DEFAULT_TIMEOUT),
                     access_mode=data.get("access_mode", "allow_all"),
@@ -653,6 +653,7 @@ class ConfigDB:
                     enabled=data.get("enabled", True),
                     platform=data.get("platform", "wecom"),
                     owner_id=data.get("owner_id"),
+                    platform_config=data.get("platform_config"),
                 )
 
                 # 创建访问规则
@@ -716,7 +717,8 @@ class ConfigDB:
                     api_key=data.get("api_key"),
                     timeout=data.get("timeout"),
                     access_mode=data.get("access_mode"),
-                    enabled=data.get("enabled")
+                    enabled=data.get("enabled"),
+                    platform_config=data.get("platform_config"),
                 )
 
                 # 更新访问规则 (如果提供)

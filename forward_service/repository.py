@@ -48,7 +48,8 @@ class ChatbotRepository:
         description: str = "",
         enabled: bool = True,
         platform: str = "wecom",
-        owner_id: str | None = None
+        owner_id: str | None = None,
+        platform_config: dict | None = None,
     ) -> Chatbot:
         """
         创建新的 Bot 配置
@@ -63,8 +64,9 @@ class ChatbotRepository:
             access_mode: 访问控制模式
             description: 描述
             enabled: 是否启用
-            platform: 平台类型 (wecom, slack, telegram, discord)
+            platform: 平台类型 (wecom, slack, telegram, discord, qqbot)
             owner_id: Bot 管理员用户 ID
+            platform_config: 平台特定配置 (如 QQ Bot 的 app_id/client_secret)
 
         Returns:
             创建的 Chatbot 对象
@@ -80,8 +82,10 @@ class ChatbotRepository:
             description=description,
             enabled=enabled,
             platform=platform,
-            owner_id=owner_id
+            owner_id=owner_id,
         )
+        if platform_config:
+            bot.set_platform_config(platform_config)
 
         self.session.add(bot)
         await self.session.flush()
@@ -158,6 +162,7 @@ class ChatbotRepository:
         description: str | None = None,
         enabled: bool | None = None,
         owner_id: str | None = _UNSET,
+        platform_config: dict | None = None,
     ) -> Optional[Chatbot]:
         """
         更新 Bot 配置
@@ -174,6 +179,7 @@ class ChatbotRepository:
             description: 描述
             enabled: 是否启用
             owner_id: Bot 管理员用户 ID
+            platform_config: 平台特定配置 (如 QQ Bot 的 app_id/client_secret)
 
         Returns:
             更新后的 Chatbot 对象或 None
@@ -200,6 +206,9 @@ class ChatbotRepository:
             update_data["enabled"] = enabled
         if owner_id is not _UNSET:
             update_data["owner_id"] = owner_id
+        if platform_config is not None:
+            import json
+            update_data["platform_config"] = json.dumps(platform_config, ensure_ascii=False)
 
         if not update_data:
             return await self.get_by_id(bot_id)
