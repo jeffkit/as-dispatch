@@ -110,10 +110,11 @@ async def lifespan(app: FastAPI):
         discord_bots = []
         qqbot_bots = []
         for bot_key, bot in config.bots.items():
-            logger.info(f"  - {bot.name} (key={bot_key[:10]}..., platform={bot.platform}, enabled={bot.enabled})")
-            if bot.platform == "discord" and bot.enabled:
+            bot_platform = bot._bot.platform if bot._bot else "unknown"
+            logger.info(f"  - {bot.name} (key={bot_key[:10]}..., platform={bot_platform}, enabled={bot.enabled})")
+            if bot_platform == "discord" and bot.enabled:
                 discord_bots.append(bot_key)
-            elif bot.platform == "qqbot" and bot.enabled:
+            elif bot_platform == "qqbot" and bot.enabled:
                 qqbot_bots.append(bot_key)
         
         # 启动 Discord Bot（后台任务）
