@@ -143,9 +143,9 @@ async def admin_status():
             "port": config.port
         },
         "stats": {
-            "total_requests": len(request_logs),
-            "recent_success": sum(1 for log in request_logs if log.status == "success"),
-            "recent_error": sum(1 for log in request_logs if log.status == "error")
+            "total_requests": 0,
+            "recent_success": 0,
+            "recent_error": 0,
         }
     }
 

@@ -18,6 +18,7 @@ dependencies = [
     "tunely>=0.1.2",
     "discord-py>=2.3.0",
     "pycryptodome>=3.20.0",
+    "fastmcp>=3.0.2",
 ]
 
 [project.optional-dependencies]

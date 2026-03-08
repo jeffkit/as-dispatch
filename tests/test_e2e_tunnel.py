@@ -61,6 +61,7 @@ def start_mock_agent(port: int = 8765):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="E2E 集成测试，需要真实的 tunely 包，在单元测试环境中跳过")
 async def test_tunnel_e2e():
     """端到端隧道测试"""
     

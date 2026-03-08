@@ -16,6 +16,8 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,7 +29,7 @@ from .config import config
 from .database import database_lifespan, get_db_manager, get_database_url
 from .session_manager import init_session_manager
 from .routes import (
-    admin_router, bots_router, callback_router, unified_callback_router,
+    admin_router, bots_router, bots_api_router, callback_router, unified_callback_router,
     intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router
 )
 from .routes import discord as discord_router
@@ -38,6 +40,7 @@ from .channel.telegram import TelegramAdapter
 from .channel.lark import LarkAdapter
 from .channel.discord import DiscordAdapter
 from .channel.slack import SlackAdapter
+from .mcp_server import get_http_app as get_mcp_http_app
 
 # 配置日志
 logging.basicConfig(
@@ -153,6 +156,7 @@ app.add_middleware(
 # 注册路由
 app.include_router(admin_router)
 app.include_router(bots_router)
+app.include_router(bots_api_router)              # 用户级接口，JWT 鉴权
 app.include_router(callback_router)              # 旧的 /callback（向后兼容）
 app.include_router(unified_callback_router)      # 新的 /callback/{platform}（多平台统一入口）
 app.include_router(intelligent_router)           # 智能机器人路由
@@ -161,6 +165,11 @@ app.include_router(telegram_router)              # Telegram 集成路由
 app.include_router(lark_router)                  # 飞书集成路由
 app.include_router(tunnel_server.router)         # 隧道服务路由
 app.include_router(tunnel_proxy_router)          # 隧道代理路由 (/t/{domain}/...)
+
+# MCP HTTP 端点
+# 配置 JWT_SECRET_KEY 时启用 JWT 鉴权（与 as-enterprise 共享同一个密钥）
+# 未配置时跳过鉴权（内网/开发模式）
+app.mount("/mcp", get_mcp_http_app(jwt_secret=os.getenv("JWT_SECRET_KEY")))
 
 # 静态文件目录
 STATIC_DIR = Path(__file__).parent / "static"
@@ -310,9 +319,6 @@ async def health() -> dict:
     errors = config.validate()
     return {
         "status": "healthy" if not errors else "unhealthy",
-        "config_errors": errors,
-        "default_bot_key": config.default_bot_key[:10] + "..." if config.default_bot_key else None,
-        "bots_count": len(config.bots),
         "version": "3.0.0"
     }
 

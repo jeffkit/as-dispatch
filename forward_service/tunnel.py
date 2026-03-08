@@ -36,6 +36,7 @@ def load_tunnel_config() -> dict:
         "admin_api_key": None,
         "jwt_secret": None,
         "instruction": None,
+        "jwt_secret": None,
     }
     
     # 1. 尝试从 JSON 文件加载
@@ -62,6 +63,8 @@ def load_tunnel_config() -> dict:
         config["jwt_secret"] = jwt_secret
     if instruction := os.getenv("WS_TUNNEL_INSTRUCTION"):
         config["instruction"] = instruction
+    if jwt_secret := os.getenv("JWT_SECRET_KEY"):
+        config["jwt_secret"] = jwt_secret
     
     return config
 
@@ -79,6 +82,7 @@ tunnel_server: TunnelServer = TunnelServer(
         admin_api_key=tunnel_config["admin_api_key"],
         jwt_secret=tunnel_config["jwt_secret"],
         instruction=tunnel_config["instruction"],
+        jwt_secret=tunnel_config["jwt_secret"],
     )
 )
 
