@@ -82,7 +82,6 @@ tunnel_server: TunnelServer = TunnelServer(
         admin_api_key=tunnel_config["admin_api_key"],
         jwt_secret=tunnel_config["jwt_secret"],
         instruction=tunnel_config["instruction"],
-        jwt_secret=tunnel_config["jwt_secret"],
     )
 )
 
