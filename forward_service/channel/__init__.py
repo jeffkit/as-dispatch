@@ -14,6 +14,7 @@ Channel 模块 - 多平台通道适配层
     from forward_service.channel import LarkAdapter
     from forward_service.channel import DiscordAdapter
     from forward_service.channel import SlackAdapter
+    from forward_service.channel import QQBotAdapter
 """
 
 from .base import InboundMessage, OutboundMessage, ChannelAdapter, SendResult
@@ -23,6 +24,7 @@ from .telegram import TelegramAdapter
 from .lark import LarkAdapter
 from .discord import DiscordAdapter
 from .slack import SlackAdapter
+from .qqbot import QQBotAdapter
 
 __all__ = [
     # 消息格式
@@ -40,4 +42,5 @@ __all__ = [
     "LarkAdapter",
     "DiscordAdapter",
     "SlackAdapter",
+    "QQBotAdapter",
 ]

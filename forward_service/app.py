@@ -40,6 +40,7 @@ from .channel.telegram import TelegramAdapter
 from .channel.lark import LarkAdapter
 from .channel.discord import DiscordAdapter
 from .channel.slack import SlackAdapter
+from .channel.qqbot import QQBotAdapter
 from .mcp_server import get_http_app as get_mcp_http_app
 
 # 配置日志
@@ -86,7 +87,8 @@ async def lifespan(app: FastAPI):
         register_adapter(LarkAdapter())
         register_adapter(DiscordAdapter())
         register_adapter(SlackAdapter())
-        logger.info("  通道适配器已注册: wecom, telegram, lark, discord, slack")
+        register_adapter(QQBotAdapter())
+        logger.info("  通道适配器已注册: wecom, telegram, lark, discord, slack, qqbot")
 
         # 初始化隧道服务器（使用相同的数据库）
         database_url = get_database_url()
@@ -106,11 +108,13 @@ async def lifespan(app: FastAPI):
 
         # 列出所有 Bot
         discord_bots = []
+        qqbot_bots = []
         for bot_key, bot in config.bots.items():
             logger.info(f"  - {bot.name} (key={bot_key[:10]}..., platform={bot.platform}, enabled={bot.enabled})")
-            # 收集需要启动的 Discord Bot
             if bot.platform == "discord" and bot.enabled:
                 discord_bots.append(bot_key)
+            elif bot.platform == "qqbot" and bot.enabled:
+                qqbot_bots.append(bot_key)
         
         # 启动 Discord Bot（后台任务）
         discord_tasks = []
@@ -119,6 +123,14 @@ async def lifespan(app: FastAPI):
             discord_tasks.append(task)
             logger.info(f"  🚀 启动 Discord Bot 任务: {bot_key[:10]}...")
 
+        # 启动 QQ Bot（后台任务）
+        from .routes import qqbot as qqbot_router
+        qqbot_tasks = []
+        for bot_key in qqbot_bots:
+            task = asyncio.create_task(qqbot_router.start_qqbot(bot_key))
+            qqbot_tasks.append(task)
+            logger.info(f"  🚀 启动 QQ Bot 任务: {bot_key[:10]}...")
+
         yield
 
         # 关闭 Discord Bot
@@ -126,8 +138,18 @@ async def lifespan(app: FastAPI):
             logger.info(f"  ⏹️  关闭 Discord Bot: {bot_key[:10]}...")
             await client.close()
         
+        # 关闭 QQ Bot
+        for bot_key, client in qqbot_router.qqbot_clients.items():
+            logger.info(f"  ⏹️  关闭 QQ Bot: {bot_key[:10]}...")
+            await client.close()
+
         # 取消 Discord Bot 任务
         for task in discord_tasks:
+            if not task.done():
+                task.cancel()
+
+        # 取消 QQ Bot 任务
+        for task in qqbot_tasks:
             if not task.done():
                 task.cancel()
 

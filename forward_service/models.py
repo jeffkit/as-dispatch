@@ -82,7 +82,7 @@ class Chatbot(Base):
         default="wecom",
         server_default="wecom",
         index=True,
-        comment="平台类型: wecom, wecom-intelligent, slack, discord, telegram, lark"
+        comment="平台类型: wecom, wecom-intelligent, slack, discord, telegram, lark, qqbot"
     )
 
     # 转发配置 - 新字段 target_url (推荐使用)
