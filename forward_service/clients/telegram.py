@@ -185,6 +185,46 @@ class TelegramClient:
             "raw": update
         }
     
+    # ============== 文件下载 ==============
+
+    async def get_file_url(self, file_id: str) -> Optional[str]:
+        """
+        获取文件的完整下载 URL
+
+        调用 Telegram getFile API 获取文件路径，然后组装完整 URL。
+
+        Args:
+            file_id: 文件 ID
+
+        Returns:
+            完整文件 URL，失败时返回 None
+        """
+        import httpx
+
+        url = f"{self.base_url}/getFile"
+        payload = {"file_id": file_id}
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+
+                if not data.get("ok"):
+                    logger.warning(f"getFile 返回错误: {data.get('description')}")
+                    return None
+
+                file_path = data.get("result", {}).get("file_path")
+                if not file_path:
+                    logger.warning(f"getFile 结果中无 file_path: file_id={file_id}")
+                    return None
+
+                return f"https://api.telegram.org/file/bot{self.bot_token}/{file_path}"
+
+        except Exception as e:
+            logger.error(f"获取 Telegram 文件 URL 失败: file_id={file_id}, error={e}")
+            return None
+
     # ============== 内联按钮 ==============
     
     def build_inline_keyboard(self, buttons: List[List[Dict[str, str]]]) -> Dict:

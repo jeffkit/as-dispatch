@@ -27,11 +27,17 @@ from .config import config
 from .database import database_lifespan, get_db_manager, get_database_url
 from .session_manager import init_session_manager
 from .routes import (
-    admin_router, bots_router, callback_router, intelligent_router,
-    slack_router, telegram_router, lark_router, tunnel_proxy_router
+    admin_router, bots_router, callback_router, unified_callback_router,
+    intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router
 )
 from .routes import discord as discord_router
 from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
+from .channel import register_adapter
+from .channel.wecom import WeComAdapter
+from .channel.telegram import TelegramAdapter
+from .channel.lark import LarkAdapter
+from .channel.discord import DiscordAdapter
+from .channel.slack import SlackAdapter
 
 # 配置日志
 logging.basicConfig(
@@ -70,6 +76,14 @@ async def lifespan(app: FastAPI):
                     logger.info("  处理锁检查完毕，无过期记录")
         except Exception as e:
             logger.warning(f"  清理处理锁失败（不影响启动）: {e}")
+
+        # 注册通道适配器
+        register_adapter(WeComAdapter())
+        register_adapter(TelegramAdapter())
+        register_adapter(LarkAdapter())
+        register_adapter(DiscordAdapter())
+        register_adapter(SlackAdapter())
+        logger.info("  通道适配器已注册: wecom, telegram, lark, discord, slack")
 
         # 初始化隧道服务器（使用相同的数据库）
         database_url = get_database_url()
@@ -139,13 +153,14 @@ app.add_middleware(
 # 注册路由
 app.include_router(admin_router)
 app.include_router(bots_router)
-app.include_router(callback_router)
-app.include_router(intelligent_router)  # 智能机器人路由
-app.include_router(slack_router)  # Slack 集成路由
-app.include_router(telegram_router)  # Telegram 集成路由
-app.include_router(lark_router)  # 飞书集成路由
-app.include_router(tunnel_server.router)  # 隧道服务路由
-app.include_router(tunnel_proxy_router)   # 隧道代理路由 (/t/{domain}/...)
+app.include_router(callback_router)              # 旧的 /callback（向后兼容）
+app.include_router(unified_callback_router)      # 新的 /callback/{platform}（多平台统一入口）
+app.include_router(intelligent_router)           # 智能机器人路由
+app.include_router(slack_router)                 # Slack 集成路由
+app.include_router(telegram_router)              # Telegram 集成路由
+app.include_router(lark_router)                  # 飞书集成路由
+app.include_router(tunnel_server.router)         # 隧道服务路由
+app.include_router(tunnel_proxy_router)          # 隧道代理路由 (/t/{domain}/...)
 
 # 静态文件目录
 STATIC_DIR = Path(__file__).parent / "static"

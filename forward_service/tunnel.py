@@ -34,6 +34,7 @@ def load_tunnel_config() -> dict:
         "domain": "tunnel",
         "ws_url": "ws://21.6.243.90:80/ws/tunnel",
         "admin_api_key": None,
+        "jwt_secret": None,
         "instruction": None,
     }
     
@@ -57,6 +58,8 @@ def load_tunnel_config() -> dict:
         config["ws_url"] = ws_url
     if admin_api_key := os.getenv("TUNNEL_ADMIN_API_KEY") or os.getenv("WS_TUNNEL_ADMIN_API_KEY"):
         config["admin_api_key"] = admin_api_key
+    if jwt_secret := os.getenv("TUNNEL_JWT_SECRET"):
+        config["jwt_secret"] = jwt_secret
     if instruction := os.getenv("WS_TUNNEL_INSTRUCTION"):
         config["instruction"] = instruction
     
@@ -74,6 +77,7 @@ tunnel_server: TunnelServer = TunnelServer(
         domain=tunnel_config["domain"],
         ws_url=tunnel_config["ws_url"],
         admin_api_key=tunnel_config["admin_api_key"],
+        jwt_secret=tunnel_config["jwt_secret"],
         instruction=tunnel_config["instruction"],
     )
 )

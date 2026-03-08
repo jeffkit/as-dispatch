@@ -2,23 +2,30 @@
 管理 API 路由
 
 /admin/* 相关接口
+
+所有路由均需要 X-Admin-Key 请求头鉴权（通过 AS_ADMIN_KEY 环境变量配置）。
 """
 import logging
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse
 from pathlib import Path
 
+from ..auth import require_admin_key
 from ..config import config
 from ..database import get_db_manager
 from ..repository import get_forward_log_repository, get_user_project_repository
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin_key)],
+)
 
 
 # ============== 请求日志（持久化到数据库） ==============

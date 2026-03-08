@@ -10,21 +10,25 @@
 
 AS-Dispatch 将扩展支持多个主流即时通讯平台，实现统一的消息转发和 Agent 集成架构。本路线图规划了 6 个平台的接入顺序、技术方案和实施计划。
 
-### 当前状态 (Phase 0)
+### 当前状态 (Phase 1 完成 ✅ 2026-03-02)
 
 | 平台 | 状态 | 功能 |
 |------|------|------|
-| 企业微信 (普通机器人) | ✅ 生产 | 完整支持 |
+| 企业微信 (普通机器人) | ✅ 生产 | 完整支持，WeComAdapter |
 | 企业微信 (智能机器人) | ✅ 开发 | XML 消息、流式响应 |
-| Slack | ✅ 开发 | 基础集成 |
-| Discord | ✅ 开发 | Bot 集成 |
+| Telegram | ✅ **Phase 1 完成** | TelegramAdapter + 统一管线 |
+| 飞书 (Lark) | ✅ **Phase 1 完成** | LarkAdapter + URL验证 + 事件解密 |
+| Discord | ✅ **Phase 1 完成** | DiscordAdapter + WebSocket 集成 |
+| Slack | ✅ **Phase 1 完成** | SlackAdapter + URL验证 + Retry检测 |
 
-### 目标平台 (Phase 1-3)
+> **Phase 1 适配器统一完成日期**: 2026-03-02  
+> 所有 5 个平台（WeChat、Telegram、Lark、Discord、Slack）均通过统一 `ChannelAdapter` 接口接入统一的 10 步 `process_message` 管线。  
+> 参考：`forward_service/channel/` 目录下各适配器实现。
+
+### 目标平台 (Phase 2-3)
 
 | 平台 | 优先级 | 预计工作量 | 计划阶段 |
 |------|--------|-----------|---------|
-| Telegram | 🔴 高 | 2周 | Phase 1 |
-| 飞书 (Lark) | 🔴 高 | 2周 | Phase 1 |
 | 钉钉 (DingTalk) | 🟡 中 | 1周 | Phase 2 |
 | WhatsApp Business | 🟢 低 | 3周 | Phase 3 |
 | Microsoft Teams | 🟢 低 | 3周 | Phase 3 |

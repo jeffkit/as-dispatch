@@ -651,7 +651,8 @@ class ConfigDB:
                     access_mode=data.get("access_mode", "allow_all"),
                     description=data.get("description", ""),
                     enabled=data.get("enabled", True),
-                    platform=data.get("platform", "wecom")
+                    platform=data.get("platform", "wecom"),
+                    owner_id=data.get("owner_id"),
                 )
 
                 # 创建访问规则
