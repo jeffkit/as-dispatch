@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class AgentResult:
     """Agent 响应结果（包含 session_id）"""
     reply: str
-    msg_type: str = "text"
+    msg_type: str = "markdown_v2"
     session_id: str | None = None
     project_id: str | None = None  # 新增：使用的项目 ID
     project_name: str | None = None  # 新增：项目名称
@@ -307,7 +307,6 @@ async def forward_to_agent_with_bot(
             if "response" in result:
                 return AgentResult(
                     reply=result["response"],
-                    msg_type="text",
                     session_id=response_session_id
                 )
             
@@ -315,7 +314,7 @@ async def forward_to_agent_with_bot(
             if "reply" in result:
                 return AgentResult(
                     reply=result.get("reply", ""),
-                    msg_type=result.get("msg_type", "text"),
+                    msg_type=result.get("msg_type", "markdown_v2"),
                     session_id=response_session_id
                 )
             
@@ -324,14 +323,12 @@ async def forward_to_agent_with_bot(
                 raw_data = result.get("json") or result.get("data", {})
                 return AgentResult(
                     reply=f"✅ 消息已处理\n\n响应数据:\n```\n{raw_data}\n```",
-                    msg_type="text",
                     session_id=response_session_id
                 )
             
             # 默认返回原始响应
             return AgentResult(
                 reply=f"✅ Agent 响应:\n```\n{json_module.dumps(result, ensure_ascii=False, indent=2)[:500]}\n```",
-                msg_type="text",
                 session_id=response_session_id
             )
             
@@ -496,7 +493,6 @@ async def forward_to_agent_with_user_project(
             if reply:
                 return AgentResult(
                     reply=str(reply),
-                    msg_type="text",
                     session_id=response_session_id,
                     project_id=forward_config.project_id,
                     project_name=forward_config.project_name
@@ -507,7 +503,6 @@ async def forward_to_agent_with_user_project(
                 raw_data = result.get("json") or result.get("data", {})
                 return AgentResult(
                     reply=f"✅ 消息已处理\n\n响应数据:\n```\n{raw_data}\n```",
-                    msg_type="text",
                     session_id=response_session_id,
                     project_id=forward_config.project_id,
                     project_name=forward_config.project_name
@@ -516,7 +511,6 @@ async def forward_to_agent_with_user_project(
             # 默认返回原始响应
             return AgentResult(
                 reply=f"✅ Agent 响应:\n```\n{json_module.dumps(result, ensure_ascii=False, indent=2)[:500]}\n```",
-                msg_type="text",
                 session_id=response_session_id,
                 project_id=forward_config.project_id,
                 project_name=forward_config.project_name
@@ -639,7 +633,6 @@ async def _forward_via_tunnel(
         if reply:
             return AgentResult(
                 reply=str(reply),
-                msg_type="text",
                 session_id=response_session_id,
                 project_id=forward_config.project_id,
                 project_name=forward_config.project_name
@@ -650,7 +643,6 @@ async def _forward_via_tunnel(
             raw_data = result.get("json") or result.get("data", {})
             return AgentResult(
                 reply=f"✅ 消息已处理\n\n响应数据:\n```\n{raw_data}\n```",
-                msg_type="text",
                 session_id=response_session_id,
                 project_id=forward_config.project_id,
                 project_name=forward_config.project_name
@@ -659,7 +651,6 @@ async def _forward_via_tunnel(
         # 默认返回原始响应
         return AgentResult(
             reply=f"✅ Agent 响应:\n```\n{json_module.dumps(result, ensure_ascii=False, indent=2)[:500]}\n```",
-            msg_type="text",
             session_id=response_session_id,
             project_id=forward_config.project_id,
             project_name=forward_config.project_name

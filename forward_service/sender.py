@@ -38,7 +38,7 @@ def send_to_wecom(
     Args:
         message: 消息内容
         chat_id: 群/私聊 ID
-        msg_type: 消息类型 (text / markdown)
+        msg_type: 消息类型 (text / markdown / markdown_v2)
         bot_key: 机器人 Key（不传则使用配置）
         mentioned_list: @提醒的用户 ID 列表（仅 text 消息支持）
     
@@ -64,7 +64,12 @@ def send_to_wecom(
     logger.info(f"发送消息到企微: chat_id={chat_id}, msg_type={msg_type}, mentioned={mentioned_list}, message={message[:50]}...")
     
     try:
-        if msg_type == "markdown":
+        if msg_type == "markdown_v2":
+            result = bot.markdown_v2(
+                chat_id=chat_id,
+                msg_content=message,
+            )
+        elif msg_type == "markdown":
             result = bot.markdown(
                 chat_id=chat_id,
                 msg_content=message,
@@ -118,7 +123,7 @@ async def send_reply(
     Args:
         chat_id: 群/私聊 ID
         message: 消息内容
-        msg_type: 消息类型 (text / markdown)
+        msg_type: 消息类型 (text / markdown / markdown_v2)
         bot_key: 机器人 Key（指定使用哪个机器人发送消息）
         short_id: 会话短 ID（用于消息头部标识）
         project_name: 项目名称（显示在消息头部）
