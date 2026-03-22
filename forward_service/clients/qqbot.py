@@ -225,7 +225,7 @@ class QQBotGateway:
         if self._heartbeat_task and not self._heartbeat_task.done():
             self._heartbeat_task.cancel()
         if self._ws:
-            await self._ws.aclose()
+            await self._ws.close()
 
     async def _connect(self):
         """建立一次 WebSocket 连接"""

@@ -30,7 +30,8 @@ from .database import database_lifespan, get_db_manager, get_database_url
 from .session_manager import init_session_manager
 from .routes import (
     admin_router, bots_router, bots_api_router, callback_router, unified_callback_router,
-    intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router
+    intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router,
+    qqbot_admin_router
 )
 from .routes import discord as discord_router
 from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
@@ -188,6 +189,7 @@ app.include_router(telegram_router)              # Telegram 集成路由
 app.include_router(lark_router)                  # 飞书集成路由
 app.include_router(tunnel_server.router)         # 隧道服务路由
 app.include_router(tunnel_proxy_router)          # 隧道代理路由 (/t/{domain}/...)
+app.include_router(qqbot_admin_router)           # QQ Bot 管理路由 (/admin/qqbot/...)
 
 # MCP HTTP 端点
 # 配置 JWT_SECRET_KEY 时启用 JWT 鉴权（与 as-enterprise 共享同一个密钥）

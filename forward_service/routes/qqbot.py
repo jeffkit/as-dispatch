@@ -5,16 +5,21 @@ QQ Bot 集成路由
 - 通过 WebSocket Gateway 接收消息（类似 Discord）
 - 将消息注入统一处理管线
 - Bot 生命周期管理（启动/停止）
+- HTTP API 用于动态启停 QQ Bot 连接
 """
+import asyncio
 import logging
 from typing import Dict
 
+from fastapi import APIRouter
 from ..clients.qqbot import QQBotClient
 from ..config import config
 from ..channel import get_adapter
 from ..pipeline import process_message
 
 logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/admin/qqbot", tags=["qqbot-admin"])
 
 # 全局 QQ Bot 客户端实例字典
 qqbot_clients: Dict[str, QQBotClient] = {}
@@ -111,3 +116,62 @@ async def start_qqbot(bot_key: str):
 
     logger.info(f"[qqbot] 启动 QQ Bot: {bot_key}, appId={app_id}")
     await client.start()
+
+
+async def stop_qqbot(bot_key: str):
+    """停止指定 QQ Bot 的 WebSocket 连接"""
+    client = qqbot_clients.pop(bot_key, None)
+    if client:
+        logger.info(f"[qqbot] 停止 QQ Bot: {bot_key}")
+        await client.close()
+
+
+@router.post("/{bot_key}/start")
+async def start_qqbot_endpoint(bot_key: str):
+    """动态启动指定 QQ Bot 的 WebSocket 连接（无需重启服务）"""
+    await config.reload_config()
+
+    bot_cfg = config.get_bot_or_default(bot_key)
+    if not bot_cfg:
+        return {"success": False, "error": f"Bot '{bot_key}' 不存在"}
+    if not bot_cfg._bot or bot_cfg._bot.platform != "qqbot":
+        return {"success": False, "error": f"Bot '{bot_key}' 不是 QQ Bot 平台"}
+
+    if bot_key in qqbot_clients:
+        await stop_qqbot(bot_key)
+
+    task = asyncio.create_task(start_qqbot(bot_key))
+    await asyncio.sleep(3)
+
+    client = qqbot_clients.get(bot_key)
+    connected = client is not None and client.gateway._session_id is not None if client else False
+    return {
+        "success": True,
+        "bot_key": bot_key,
+        "connected": connected,
+        "session_id": client.gateway._session_id if connected else None,
+    }
+
+
+@router.post("/{bot_key}/stop")
+async def stop_qqbot_endpoint(bot_key: str):
+    """停止指定 QQ Bot 的 WebSocket 连接"""
+    if bot_key not in qqbot_clients:
+        return {"success": False, "error": f"QQ Bot '{bot_key}' 未在运行"}
+    await stop_qqbot(bot_key)
+    return {"success": True, "bot_key": bot_key}
+
+
+@router.get("/{bot_key}/status")
+async def qqbot_status_endpoint(bot_key: str):
+    """获取指定 QQ Bot 的连接状态"""
+    client = qqbot_clients.get(bot_key)
+    if not client:
+        return {"running": False, "bot_key": bot_key}
+    return {
+        "running": True,
+        "bot_key": bot_key,
+        "app_id": client.app_id,
+        "session_id": client.gateway._session_id,
+        "connected": client.gateway._session_id is not None,
+    }
