@@ -31,7 +31,7 @@ from .session_manager import init_session_manager
 from .routes import (
     admin_router, bots_router, bots_api_router, callback_router, unified_callback_router,
     intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router,
-    qqbot_admin_router
+    qqbot_admin_router, weixin_admin_router
 )
 from .routes import discord as discord_router
 from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
@@ -42,6 +42,7 @@ from .channel.lark import LarkAdapter
 from .channel.discord import DiscordAdapter
 from .channel.slack import SlackAdapter
 from .channel.qqbot import QQBotAdapter
+from .channel.weixin import WeixinAdapter
 from .mcp_server import get_http_app as get_mcp_http_app
 
 # 配置日志
@@ -89,7 +90,8 @@ async def lifespan(app: FastAPI):
         register_adapter(DiscordAdapter())
         register_adapter(SlackAdapter())
         register_adapter(QQBotAdapter())
-        logger.info("  通道适配器已注册: wecom, telegram, lark, discord, slack, qqbot")
+        register_adapter(WeixinAdapter())
+        logger.info("  通道适配器已注册: wecom, telegram, lark, discord, slack, qqbot, weixin")
 
         # 初始化隧道服务器（使用相同的数据库）
         database_url = get_database_url()
@@ -110,6 +112,7 @@ async def lifespan(app: FastAPI):
         # 列出所有 Bot
         discord_bots = []
         qqbot_bots = []
+        weixin_bots = []
         for bot_key, bot in config.bots.items():
             bot_platform = bot._bot.platform if bot._bot else "unknown"
             logger.info(f"  - {bot.name} (key={bot_key[:10]}..., platform={bot_platform}, enabled={bot.enabled})")
@@ -117,6 +120,10 @@ async def lifespan(app: FastAPI):
                 discord_bots.append(bot_key)
             elif bot_platform == "qqbot" and bot.enabled:
                 qqbot_bots.append(bot_key)
+            elif bot_platform == "weixin" and bot.enabled:
+                platform_cfg = bot._bot.get_platform_config() if bot._bot else {}
+                if platform_cfg.get("bot_token") and platform_cfg.get("login_status") == "logged_in":
+                    weixin_bots.append(bot_key)
         
         # 启动 Discord Bot（后台任务）
         discord_tasks = []
@@ -133,6 +140,12 @@ async def lifespan(app: FastAPI):
             qqbot_tasks.append(task)
             logger.info(f"  🚀 启动 QQ Bot 任务: {bot_key[:10]}...")
 
+        # 启动微信 Bot（后台任务）
+        from .routes import weixin as weixin_router
+        for bot_key in weixin_bots:
+            asyncio.create_task(_start_weixin_bot(bot_key))
+            logger.info(f"  🚀 启动微信 Bot 任务: {bot_key[:10]}...")
+
         yield
 
         # 关闭 Discord Bot
@@ -144,6 +157,11 @@ async def lifespan(app: FastAPI):
         for bot_key, client in qqbot_router.qqbot_clients.items():
             logger.info(f"  ⏹️  关闭 QQ Bot: {bot_key[:10]}...")
             await client.close()
+
+        # 关闭微信 Bot
+        for bot_key in list(weixin_router.weixin_pollers.keys()):
+            logger.info(f"  ⏹️  关闭微信 Bot: {bot_key[:10]}...")
+            await weixin_router.stop_weixin(bot_key)
 
         # 取消 Discord Bot 任务
         for task in discord_tasks:
@@ -158,6 +176,17 @@ async def lifespan(app: FastAPI):
         # 关闭隧道服务器
         await tunnel_server.close()
         logger.info("Forward Service 关闭")
+
+
+async def _start_weixin_bot(bot_key: str) -> None:
+    """启动微信 Bot 的辅助协程（用于 create_task）"""
+    try:
+        from .routes.weixin import start_weixin
+        result = await start_weixin(bot_key)
+        if not result.get("success"):
+            logger.warning(f"  微信 Bot 启动失败: {bot_key[:10]}... - {result.get('error')}")
+    except Exception as e:
+        logger.error(f"  微信 Bot 启动异常: {bot_key[:10]}... - {e}", exc_info=True)
 
 
 # 创建 FastAPI 应用
@@ -190,6 +219,7 @@ app.include_router(lark_router)                  # 飞书集成路由
 app.include_router(tunnel_server.router)         # 隧道服务路由
 app.include_router(tunnel_proxy_router)          # 隧道代理路由 (/t/{domain}/...)
 app.include_router(qqbot_admin_router)           # QQ Bot 管理路由 (/admin/qqbot/...)
+app.include_router(weixin_admin_router)          # 微信管理路由 (/admin/weixin/...)
 
 # MCP HTTP 端点
 # 配置 JWT_SECRET_KEY 时启用 JWT 鉴权（与 as-enterprise 共享同一个密钥）

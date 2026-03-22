@@ -15,6 +15,7 @@ Channel 模块 - 多平台通道适配层
     from forward_service.channel import DiscordAdapter
     from forward_service.channel import SlackAdapter
     from forward_service.channel import QQBotAdapter
+    from forward_service.channel import WeixinAdapter
 """
 
 from .base import InboundMessage, OutboundMessage, ChannelAdapter, SendResult
@@ -25,6 +26,7 @@ from .lark import LarkAdapter
 from .discord import DiscordAdapter
 from .slack import SlackAdapter
 from .qqbot import QQBotAdapter
+from .weixin import WeixinAdapter
 
 __all__ = [
     # 消息格式
@@ -43,4 +45,5 @@ __all__ = [
     "DiscordAdapter",
     "SlackAdapter",
     "QQBotAdapter",
+    "WeixinAdapter",
 ]

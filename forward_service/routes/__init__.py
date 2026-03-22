@@ -14,6 +14,7 @@ from .telegram import router as telegram_router
 from .lark import router as lark_router
 from .tunnel_proxy import router as tunnel_proxy_router
 from .qqbot import router as qqbot_admin_router
+from .weixin import router as weixin_admin_router
 
 __all__ = [
     "admin_router",
@@ -27,4 +28,5 @@ __all__ = [
     "lark_router",
     "tunnel_proxy_router",
     "qqbot_admin_router",
+    "weixin_admin_router",
 ]
