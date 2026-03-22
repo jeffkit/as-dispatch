@@ -1095,8 +1095,8 @@ class OutboundMessageContext(Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime,
         nullable=False,
-        default=lambda: datetime.now(timezone.utc) + timedelta(hours=24),
-        comment="过期时间（默认创建后 24 小时）"
+        default=lambda: datetime.now(timezone.utc) + timedelta(days=7),
+        comment="过期时间（默认创建后 7 天）"
     )
 
     __table_args__ = (

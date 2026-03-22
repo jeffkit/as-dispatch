@@ -27,9 +27,9 @@
 
 **Purpose**: Shared utilities and configuration changes that Phase A–D depend on. No new endpoints yet.
 
-- [ ] T001 [P] [US1] Create `forward_service/utils/short_id.py` — implement `generate_outbound_short_id()` using `"ob_" + secrets.token_hex(3)`; include uniqueness validation helper (accept an async `exists_checker` callback)
-- [ ] T002 [P] [US1] Extend `SHORT_ID_PATTERN` in `forward_service/utils/content.py` to support `ob_` prefix — update regex from `[a-f0-9]{6,8}` to also match `ob_[a-f0-9]{6}`; ensure `extract_content_parts()` returns `ob_xxxxxx` as `quoted_short_id`
-- [ ] T003 [US1] Update `expires_at` default in `forward_service/models.py` `OutboundMessageContext` — change from `timedelta(hours=24)` to `timedelta(days=7)` per spec FR-006
+- [X] T001 [P] [US1] Create `forward_service/utils/short_id.py` — implement `generate_outbound_short_id()` using `"ob_" + secrets.token_hex(3)`; include uniqueness validation helper (accept an async `exists_checker` callback)
+- [X] T002 [P] [US1] Extend `SHORT_ID_PATTERN` in `forward_service/utils/content.py` to support `ob_` prefix — update regex from `[a-f0-9]{6,8}` to also match `ob_[a-f0-9]{6}`; ensure `extract_content_parts()` returns `ob_xxxxxx` as `quoted_short_id`
+- [X] T003 [US1] Update `expires_at` default in `forward_service/models.py` `OutboundMessageContext` — change from `timedelta(hours=24)` to `timedelta(days=7)` per spec FR-006
 
 **Checkpoint**: Shared utilities ready — Phase A and Phase B can proceed.
 

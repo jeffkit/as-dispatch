@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # - ------ 是 6 个减号作为分隔线
 # - 引用内容中可能包含 [#short_id] 或 [#short_id project_name] 的会话标识
 QUOTE_SEPARATOR = "\n------\n"
-SHORT_ID_PATTERN = re.compile(r'\[#([a-f0-9]{6,8})(?:\s+\S+)?\]')
+SHORT_ID_PATTERN = re.compile(r'\[#((?:ob_)?[a-f0-9]{6,8})(?:\s+\S+)?\]')
 
 # 当消息只有图片没有文本时，使用占位文本（防御性处理）
 IMAGE_ONLY_PLACEHOLDER = "[图片]"
