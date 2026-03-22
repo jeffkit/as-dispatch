@@ -56,12 +56,12 @@
 
 ### Phase 2C: AgentStudio — 后端代理端点
 
-- [ ] T007 [US1] Create `agentstudio/backend/src/services/dispatchService.ts` — implement as-dispatch API client:
+- [X] T007 [US1] Create `agentstudio/backend/src/services/dispatchService.ts` — implement as-dispatch API client:
   - `generateJWT()`: sign JWT with `JWT_SECRET_KEY` env var using `jsonwebtoken`
   - `sendToIM(params)`: POST to `${AS_DISPATCH_URL}/api/im/send` with JWT Bearer auth
   - Timeout: 10 seconds
   - Error handling: network errors → `{ success: false, error }`
-- [ ] T008 [US1] Add `POST /api/agui/dispatch-im` route in `agentstudio/backend/src/routes/agui.ts`:
+- [X] T008 [US1] Add `POST /api/agui/dispatch-im` route in `agentstudio/backend/src/routes/agui.ts`:
   - Accept `{ sessionId, messageContent, botKey, chatId, projectName?, agentId? }`
   - Call `dispatchService.sendToIM()` from T007
   - Return `{ success, shortId, error? }` to frontend
