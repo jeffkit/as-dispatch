@@ -22,7 +22,7 @@ import httpx
 from ..config import config
 from ..database import get_db_manager
 from ..repository import get_user_project_repository
-from ..tunnel import is_tunnel_url, extract_tunnel_domain, extract_tunnel_path, get_tunnel_server
+from ..tunnel import is_tunnel_url, extract_tunnel_domain, extract_tunnel_path, get_tunnel_server, rewrite_tunnel_url
 
 logger = logging.getLogger(__name__)
 
@@ -416,16 +416,24 @@ async def forward_to_agent_with_user_project(
 
     # === 检查是否使用隧道转发 ===
     if is_tunnel_url(target_url):
-        return await _forward_via_tunnel(
-            target_url=target_url,
-            headers=headers,
-            request_body=request_body,
-            request_timeout=request_timeout,
-            session_id=session_id,
-            forward_config=forward_config,
-            request_id=request_id,
-            start_time=start_time,
-        )
+        # 优先重写为公共可达的 /t/ 路径 URL（通过 nginx → tunnel_proxy 路由）
+        rewritten_url = rewrite_tunnel_url(target_url)
+        if rewritten_url:
+            logger.info(f"[{request_id}] .tunnel URL 已重写: {target_url} → {rewritten_url}")
+            target_url = rewritten_url
+            # 继续走下面的 HTTP POST 直连模式
+        else:
+            # 未配置 TUNNEL_PROXY_BASE_URL，走旧的内部隧道转发
+            return await _forward_via_tunnel(
+                target_url=target_url,
+                headers=headers,
+                request_body=request_body,
+                request_timeout=request_timeout,
+                session_id=session_id,
+                forward_config=forward_config,
+                request_id=request_id,
+                start_time=start_time,
+            )
 
     # === 直连模式：HTTP POST ===
     try:

@@ -36,7 +36,7 @@ def load_tunnel_config() -> dict:
         "admin_api_key": None,
         "jwt_secret": None,
         "instruction": None,
-        "jwt_secret": None,
+        "proxy_base_url": None,
     }
     
     # 1. 尝试从 JSON 文件加载
@@ -65,6 +65,8 @@ def load_tunnel_config() -> dict:
         config["instruction"] = instruction
     if jwt_secret := os.getenv("JWT_SECRET_KEY"):
         config["jwt_secret"] = jwt_secret
+    if proxy_base_url := os.getenv("TUNNEL_PROXY_BASE_URL"):
+        config["proxy_base_url"] = proxy_base_url
     
     return config
 
@@ -87,6 +89,56 @@ tunnel_server: TunnelServer = TunnelServer(
 
 # 隧道域名后缀（用于识别隧道请求）
 TUNNEL_DOMAIN_SUFFIX = ".tunnel"
+
+# 隧道代理公共基础 URL（如 http://agentstudio.woa.com）
+# 设置后，.tunnel 虚拟域名会自动重写为 {base_url}/t/{domain}/... 格式
+TUNNEL_PROXY_BASE_URL: Optional[str] = tunnel_config.get("proxy_base_url")
+if TUNNEL_PROXY_BASE_URL:
+    TUNNEL_PROXY_BASE_URL = TUNNEL_PROXY_BASE_URL.rstrip("/")
+    logger.info(f"隧道代理公共 URL: {TUNNEL_PROXY_BASE_URL}")
+
+
+def get_tunnel_proxy_base_url() -> Optional[str]:
+    """获取隧道代理公共基础 URL"""
+    return TUNNEL_PROXY_BASE_URL
+
+
+def build_tunnel_proxy_url(domain: str, path: str = "/") -> Optional[str]:
+    """
+    构建隧道代理的公共可达 URL
+    
+    Args:
+        domain: 隧道域名，如 "kongjie-2"
+        path: 请求路径，如 "/a2a/{agentId}/messages"
+        
+    Returns:
+        公共 URL，如 "http://agentstudio.woa.com/t/kongjie-2/a2a/{agentId}/messages"
+        如果未配置 TUNNEL_PROXY_BASE_URL 则返回 None
+    """
+    if not TUNNEL_PROXY_BASE_URL:
+        return None
+    path = path if path.startswith("/") else f"/{path}"
+    return f"{TUNNEL_PROXY_BASE_URL}/t/{domain}{path}"
+
+
+def rewrite_tunnel_url(url: str) -> Optional[str]:
+    """
+    将 .tunnel 虚拟域名 URL 重写为公共可达的 /t/ 路径 URL
+    
+    Args:
+        url: 原始 URL，如 "https://kongjie-2.tunnel/a2a/.../messages"
+        
+    Returns:
+        重写后的 URL，如 "http://agentstudio.woa.com/t/kongjie-2/a2a/.../messages"
+        如果不是隧道 URL 或未配置 TUNNEL_PROXY_BASE_URL 则返回 None
+    """
+    if not TUNNEL_PROXY_BASE_URL or not is_tunnel_url(url):
+        return None
+    domain = extract_tunnel_domain(url)
+    path = extract_tunnel_path(url)
+    if not domain:
+        return None
+    return build_tunnel_proxy_url(domain, path)
 
 
 async def init_tunnel_server(database_url: str) -> None:
