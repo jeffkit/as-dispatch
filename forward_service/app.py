@@ -31,7 +31,7 @@ from .session_manager import init_session_manager
 from .routes import (
     admin_router, bots_router, bots_api_router, callback_router, unified_callback_router,
     intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router,
-    qqbot_admin_router, weixin_admin_router, outbound_context_router
+    qqbot_admin_router, weixin_admin_router, outbound_context_router, im_send_router
 )
 from .routes import discord as discord_router
 from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
@@ -223,6 +223,7 @@ app.include_router(admin_router)
 app.include_router(bots_router)
 app.include_router(bots_api_router)              # 用户级接口，JWT 鉴权
 app.include_router(outbound_context_router)      # 出站消息上下文 API，JWT 鉴权
+app.include_router(im_send_router)               # 出站消息发送 API，JWT 鉴权
 app.include_router(callback_router)              # 旧的 /callback（向后兼容）
 app.include_router(unified_callback_router)      # 新的 /callback/{platform}（多平台统一入口）
 app.include_router(intelligent_router)           # 智能机器人路由

@@ -43,7 +43,7 @@
 
 ### Phase 2A: as-dispatch — 出站发送端点
 
-- [ ] T004 [US1] Create `forward_service/routes/im_send.py` — implement `POST /api/im/send` endpoint with `require_enterprise_jwt` auth:
+- [X] T004 [US1] Create `forward_service/routes/im_send.py` — implement `POST /api/im/send` endpoint with `require_enterprise_jwt` auth:
   - Accept `DispatchRequest` body (message_content, bot_key, chat_id, session_id, agent_id?, project_name?, msg_type?)
   - Call `generate_outbound_short_id()` from T001
   - Prepend routing header `[#ob_xxxxxx ProjectName]\n\n` to message_content
@@ -51,8 +51,8 @@
   - On success: save `OutboundMessageContext` via `create_outbound_context()` with `expires_at = now + 7 days`
   - On failure: return `{ success: false, error }` without persisting context
   - Return `{ success: true, short_id, message_with_header }`
-- [ ] T005 [US1] Register `im_send_router` in `forward_service/routes/__init__.py` — add import and `__all__` entry
-- [ ] T006 [US1] Mount `im_send_router` in `forward_service/app.py` — add `app.include_router(im_send_router)`
+- [X] T005 [US1] Register `im_send_router` in `forward_service/routes/__init__.py` — add import and `__all__` entry
+- [X] T006 [US1] Mount `im_send_router` in `forward_service/app.py` — add `app.include_router(im_send_router)`
 
 ### Phase 2C: AgentStudio — 后端代理端点
 
