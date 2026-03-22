@@ -9,7 +9,7 @@ Forward Service 数据库模型
 - 开发/测试: SQLite (内存或文件)
 - 生产: MySQL
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 try:
     from typing import Literal
@@ -1013,6 +1013,117 @@ class ChatInfo(Base):
     def is_single(self) -> bool:
         """是否为私聊"""
         return self.chat_type == "single"
+
+
+# ============== 出站消息上下文模型 ==============
+
+class OutboundMessageContext(Base):
+    """
+    出站消息上下文表
+
+    记录 Agent 通过企微发出的消息上下文，用于：
+    - 异步回复路由：用户引用回复时，根据 message_id 找到原始任务上下文
+    - 将回复路由回对应的 Agent session 和 task
+    """
+    __tablename__ = "outbound_message_contexts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    message_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+        comment="企微消息 ID"
+    )
+
+    task_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="TaskItem ID（来自任务队列）"
+    )
+
+    agent_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="发送消息的 Agent ID"
+    )
+
+    session_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Agent 会话 ID"
+    )
+
+    bot_key: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="发送消息使用的 Bot Key"
+    )
+
+    chat_id: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        comment="目标 Chat ID（群ID或私聊ID）"
+    )
+
+    content_preview: Mapped[Optional[str]] = mapped_column(
+        String(200),
+        nullable=True,
+        comment="消息内容预览（前 200 字符）"
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="pending",
+        comment="状态: pending（待回复）/ replied（已回复）/ expired（已过期）"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        comment="创建时间"
+    )
+
+    replied_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="回复时间"
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc) + timedelta(hours=24),
+        comment="过期时间（默认创建后 24 小时）"
+    )
+
+    __table_args__ = (
+        Index("idx_outbound_ctx_message_id", "message_id"),
+        Index("idx_outbound_ctx_status", "status"),
+        Index("idx_outbound_ctx_expires_at", "expires_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<OutboundMessageContext(id={self.id}, message_id={self.message_id}, status={self.status})>"
+
+    def to_dict(self) -> dict:
+        """转换为字典 (用于 API 返回)"""
+        return {
+            "id": self.id,
+            "message_id": self.message_id,
+            "task_id": self.task_id,
+            "agent_id": self.agent_id,
+            "session_id": self.session_id,
+            "bot_key": self.bot_key,
+            "chat_id": self.chat_id,
+            "content_preview": self.content_preview,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "replied_at": self.replied_at.isoformat() if self.replied_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+        }
 
 
 # ============== 系统配置模型 ==============

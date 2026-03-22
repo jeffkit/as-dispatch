@@ -9,6 +9,7 @@ from .bots_api import router as bots_api_router
 from .callback import router as callback_router
 from .unified_callback import router as unified_callback_router
 from .intelligent import router as intelligent_router
+from .outbound_context_api import router as outbound_context_router
 from .slack import router as slack_router
 from .telegram import router as telegram_router
 from .lark import router as lark_router
@@ -23,6 +24,7 @@ __all__ = [
     "callback_router",
     "unified_callback_router",
     "intelligent_router",
+    "outbound_context_router",
     "slack_router",
     "telegram_router",
     "lark_router",

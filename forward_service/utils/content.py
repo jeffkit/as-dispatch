@@ -33,6 +33,7 @@ class ExtractedContent:
     text: Optional[str]
     image_urls: list[str]
     quoted_short_id: Optional[str] = None  # 从引用内容中解析出的会话短 ID
+    quoted_message_id: Optional[str] = None  # 被引用消息的原始 msgid（用于出站消息上下文路由）
 
 
 def strip_quote_content(text: str) -> tuple[str, Optional[str]]:
@@ -95,6 +96,19 @@ def _strip_at_prefix(text: str) -> str:
     return text
 
 
+def _extract_quoted_message_id(data: dict) -> Optional[str]:
+    """
+    从回调数据中提取被引用消息的原始 msgid。
+
+    企微/飞鸽可能在不同字段携带此信息，按优先级尝试多个字段名。
+    """
+    for field in ("reply_id", "quote_msgid", "quoted_msgid", "reply_msgid"):
+        val = data.get(field)
+        if val:
+            return str(val)
+    return None
+
+
 def extract_content(data: dict) -> ExtractedContent:
     """
     从回调数据中提取消息内容
@@ -106,9 +120,10 @@ def extract_content(data: dict) -> ExtractedContent:
         data: 飞鸽回调原始数据
     
     Returns:
-        ExtractedContent: 包含 text, image_urls, quoted_short_id
+        ExtractedContent: 包含 text, image_urls, quoted_short_id, quoted_message_id
     """
     msg_type = data.get("msgtype", "")
+    quoted_message_id = _extract_quoted_message_id(data)
     
     if msg_type == "text":
         text_data = data.get("text", {})
@@ -120,15 +135,14 @@ def extract_content(data: dict) -> ExtractedContent:
         # 去除 @机器人
         content = _strip_at_prefix(content)
         
-        return ExtractedContent(text=content, image_urls=[], quoted_short_id=quoted_short_id)
+        return ExtractedContent(text=content, image_urls=[], quoted_short_id=quoted_short_id, quoted_message_id=quoted_message_id)
     
     elif msg_type == "image":
         image_data = data.get("image", {})
         image_url = image_data.get("image_url", "")
         image_urls = [image_url] if image_url else []
-        # 纯图片消息：设置占位文本，避免转发空 message 给 Agent
         text = IMAGE_ONLY_PLACEHOLDER if image_urls else None
-        return ExtractedContent(text=text, image_urls=image_urls)
+        return ExtractedContent(text=text, image_urls=image_urls, quoted_message_id=quoted_message_id)
     
     elif msg_type == "mixed":
         mixed = data.get("mixed_message", {})
@@ -162,6 +176,6 @@ def extract_content(data: dict) -> ExtractedContent:
         if not content and images:
             content = IMAGE_ONLY_PLACEHOLDER
             logger.info("混合消息文本为空但有图片，使用占位文本")
-        return ExtractedContent(text=content, image_urls=images, quoted_short_id=quoted_short_id)
+        return ExtractedContent(text=content, image_urls=images, quoted_short_id=quoted_short_id, quoted_message_id=quoted_message_id)
     
-    return ExtractedContent(text=None, image_urls=[])
+    return ExtractedContent(text=None, image_urls=[], quoted_message_id=quoted_message_id)

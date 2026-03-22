@@ -274,9 +274,31 @@ async def handle_callback(
         content = extracted.text
         image_urls = extracted.image_urls
         quoted_short_id = extracted.quoted_short_id
+        quoted_message_id = extracted.quoted_message_id
         
         if quoted_short_id:
             logger.info(f"检测到引用回复，quoted_short_id={quoted_short_id}")
+        if quoted_message_id:
+            logger.info(f"检测到引用消息 ID: quoted_message_id={quoted_message_id}")
+        
+        # === 出站消息上下文路由：引用回复 → 查找原始任务上下文 ===
+        outbound_ctx = None
+        if quoted_message_id:
+            try:
+                from ..repository import get_outbound_context_repository
+                db_mgr = get_db_manager()
+                async with db_mgr.get_session() as ctx_session:
+                    ctx_repo = get_outbound_context_repository(ctx_session)
+                    outbound_ctx = await ctx_repo.find_context_by_message_id(quoted_message_id)
+                    if outbound_ctx:
+                        logger.info(
+                            f"匹配到出站消息上下文: task_id={outbound_ctx.task_id}, "
+                            f"agent_id={outbound_ctx.agent_id}, session_id={outbound_ctx.session_id}"
+                        )
+                        await ctx_repo.mark_context_replied(outbound_ctx.id)
+                        await ctx_session.commit()
+            except Exception as e:
+                logger.warning(f"查找出站消息上下文失败（不影响主流程）: {e}")
         
         if not content and not image_urls:
             logger.warning("消息内容为空，跳过处理")
@@ -522,9 +544,20 @@ async def handle_callback(
         current_session_id = None
         active_session = None
         is_quote_pinned = False  # 标记是否为引用回复指定的会话
+        outbound_task_id = None  # 从出站上下文注入的 task_id
         
-        if quoted_short_id:
-            # 只查找会话，不切换活跃状态（支持多会话交叉回复）
+        # 优先级 1: 出站消息上下文路由（quoted_message_id → DB 查找 → 注入 session/task/agent）
+        if outbound_ctx and outbound_ctx.session_id:
+            current_session_id = outbound_ctx.session_id
+            outbound_task_id = outbound_ctx.task_id
+            is_quote_pinned = True
+            logger.info(
+                f"出站上下文路由: session_id={outbound_ctx.session_id[:8]}, "
+                f"task_id={outbound_ctx.task_id}"
+            )
+        
+        # 优先级 2: 引用回复中的 short_id（现有逻辑）
+        if not current_session_id and quoted_short_id:
             quoted_session = await session_mgr.get_session_by_short_id(
                 effective_user, chat_id, quoted_short_id, bot_key=bot.bot_key
             )
@@ -536,7 +569,8 @@ async def handle_callback(
             else:
                 logger.warning(f"引用 short_id={quoted_short_id} 未匹配到会话，使用当前活跃会话")
         
-        if not active_session:
+        # 优先级 3: 当前活跃会话
+        if not active_session and not current_session_id:
             active_session = await session_mgr.get_active_session(effective_user, chat_id, bot.bot_key)
             if active_session:
                 current_session_id = active_session.session_id
@@ -682,10 +716,17 @@ async def handle_callback(
             # 转发到 Agent（优先使用用户项目配置，带上 session_id）
             # 获取当前会话指定的项目 ID（如果有）
             current_project_id = active_session.current_project_id if active_session else None
+            
+            # 出站上下文路由：将 task_id 注入到转发内容，让 Agent 知道上下文
+            forward_content = content or ""
+            if outbound_task_id:
+                forward_content = f"[TASK_REPLY task_id={outbound_task_id}] {forward_content}"
+                logger.info(f"注入任务上下文到转发内容: task_id={outbound_task_id}")
+            
             result = await forward_to_agent_with_user_project(
                 bot_key=bot.bot_key,
                 chat_id=chat_id,
-                content=content or "",
+                content=forward_content,
                 timeout=config.timeout,
                 session_id=current_session_id,
                 current_project_id=current_project_id,

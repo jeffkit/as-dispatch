@@ -9,7 +9,7 @@ from typing import Optional, List
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Chatbot, ChatAccessRule, ForwardLog, SystemConfig, UserProjectConfig, ChatInfo, ProcessingSession
+from .models import Chatbot, ChatAccessRule, ForwardLog, SystemConfig, UserProjectConfig, ChatInfo, ProcessingSession, OutboundMessageContext
 from .database import get_db_manager
 
 logger = logging.getLogger(__name__)
@@ -1438,3 +1438,133 @@ class ProcessingSessionRepository:
 def get_processing_session_repository(session: AsyncSession) -> ProcessingSessionRepository:
     """获取 ProcessingSessionRepository 实例"""
     return ProcessingSessionRepository(session)
+
+
+# ============== OutboundMessageContext Repository ==============
+
+class OutboundMessageContextRepository:
+    """
+    出站消息上下文数据访问层
+
+    提供对 outbound_message_contexts 表的 CRUD 操作，
+    用于异步回复路由：记录 Agent 发出的企微消息上下文，
+    当用户引用回复时查找对应任务/会话信息。
+    """
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create_outbound_context(
+        self,
+        message_id: str,
+        bot_key: str,
+        chat_id: str,
+        task_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        content_preview: Optional[str] = None,
+    ) -> OutboundMessageContext:
+        """
+        保存出站消息上下文
+
+        Args:
+            message_id: 企微消息 ID
+            bot_key: 发送使用的 Bot Key
+            chat_id: 目标 Chat ID
+            task_id: 关联的 TaskItem ID（可选）
+            agent_id: 发送消息的 Agent ID（可选）
+            session_id: Agent 会话 ID（可选）
+            content_preview: 消息内容预览（可选，自动截断到 200 字符）
+
+        Returns:
+            创建的 OutboundMessageContext 对象
+        """
+        ctx = OutboundMessageContext(
+            message_id=message_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            bot_key=bot_key,
+            chat_id=chat_id,
+            content_preview=content_preview[:200] if content_preview else None,
+        )
+        self.session.add(ctx)
+        await self.session.flush()
+
+        logger.info(f"保存出站消息上下文: message_id={message_id}, task_id={task_id}, agent_id={agent_id}")
+        return ctx
+
+    async def find_context_by_message_id(self, message_id: str) -> Optional[OutboundMessageContext]:
+        """
+        根据企微消息 ID 查找出站上下文
+
+        只返回未过期且状态为 pending 的记录。
+
+        Args:
+            message_id: 企微消息 ID
+
+        Returns:
+            OutboundMessageContext 对象或 None
+        """
+        stmt = select(OutboundMessageContext).where(
+            OutboundMessageContext.message_id == message_id,
+            OutboundMessageContext.status == "pending",
+            OutboundMessageContext.expires_at > datetime.now(timezone.utc),
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def mark_context_replied(self, context_id: int) -> Optional[OutboundMessageContext]:
+        """
+        标记上下文为已回复
+
+        Args:
+            context_id: 上下文记录 ID
+
+        Returns:
+            更新后的 OutboundMessageContext 对象或 None
+        """
+        stmt = select(OutboundMessageContext).where(
+            OutboundMessageContext.id == context_id
+        )
+        result = await self.session.execute(stmt)
+        ctx = result.scalar_one_or_none()
+
+        if ctx:
+            ctx.status = "replied"
+            ctx.replied_at = datetime.now(timezone.utc)
+            await self.session.flush()
+            logger.info(f"标记出站消息上下文已回复: id={context_id}, message_id={ctx.message_id}")
+
+        return ctx
+
+    async def cleanup_expired_contexts(self) -> int:
+        """
+        清理已过期的上下文记录
+
+        将 expires_at < now 且 status 仍为 pending 的记录标记为 expired。
+
+        Returns:
+            清理的记录数
+        """
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(OutboundMessageContext)
+            .where(
+                OutboundMessageContext.status == "pending",
+                OutboundMessageContext.expires_at < now,
+            )
+            .values(status="expired")
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+
+        cleaned = result.rowcount or 0
+        if cleaned > 0:
+            logger.info(f"清理 {cleaned} 条过期的出站消息上下文")
+        return cleaned
+
+
+def get_outbound_context_repository(session: AsyncSession) -> OutboundMessageContextRepository:
+    """获取 OutboundMessageContextRepository 实例"""
+    return OutboundMessageContextRepository(session)

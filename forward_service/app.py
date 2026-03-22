@@ -31,7 +31,7 @@ from .session_manager import init_session_manager
 from .routes import (
     admin_router, bots_router, bots_api_router, callback_router, unified_callback_router,
     intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router,
-    qqbot_admin_router, weixin_admin_router
+    qqbot_admin_router, weixin_admin_router, outbound_context_router
 )
 from .routes import discord as discord_router
 from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
@@ -92,6 +92,18 @@ async def lifespan(app: FastAPI):
         register_adapter(QQBotAdapter())
         register_adapter(WeixinAdapter())
         logger.info("  通道适配器已注册: wecom, telegram, lark, discord, slack, qqbot, weixin")
+
+        # 清理过期的出站消息上下文
+        try:
+            from .repository import OutboundMessageContextRepository
+            async with db.get_session() as session:
+                ctx_repo = OutboundMessageContextRepository(session)
+                expired_count = await ctx_repo.cleanup_expired_contexts()
+                await session.commit()
+                if expired_count > 0:
+                    logger.info(f"  清理了 {expired_count} 条过期的出站消息上下文")
+        except Exception as e:
+            logger.warning(f"  清理出站消息上下文失败（不影响启动）: {e}")
 
         # 初始化隧道服务器（使用相同的数据库）
         database_url = get_database_url()
@@ -210,6 +222,7 @@ app.add_middleware(
 app.include_router(admin_router)
 app.include_router(bots_router)
 app.include_router(bots_api_router)              # 用户级接口，JWT 鉴权
+app.include_router(outbound_context_router)      # 出站消息上下文 API，JWT 鉴权
 app.include_router(callback_router)              # 旧的 /callback（向后兼容）
 app.include_router(unified_callback_router)      # 新的 /callback/{platform}（多平台统一入口）
 app.include_router(intelligent_router)           # 智能机器人路由
