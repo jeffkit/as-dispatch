@@ -120,17 +120,17 @@
 
 ### as-dispatch tests
 
-- [ ] T014 [P] [US1] Create `tests/unit/test_short_id.py` — tests for `generate_outbound_short_id()`:
+- [X] T014 [P] [US1] Create `tests/unit/test_short_id.py` — tests for `generate_outbound_short_id()`:
   - Format validation: starts with `ob_`, 8 chars total, hex suffix
   - Uniqueness across multiple calls
   - `secrets.token_hex(3)` output length
-- [ ] T015 [P] [US1] Create `tests/unit/test_im_send.py` — tests for `POST /api/im/send`:
+- [X] T015 [P] [US1] Create `tests/unit/test_im_send.py` — tests for `POST /api/im/send`:
   - Happy path: valid request → success response with short_id
   - Routing header format: `[#ob_xxxxxx ProjectName]\n\n<content>`
   - Send failure: fly-pigeon error → `{ success: false, error }`, no context persisted
   - Missing required fields → 422
   - JWT auth enforcement
-- [ ] T016 [P] [US2] Create `tests/unit/test_outbound_routing.py` — tests for callback ob_ routing:
+- [X] T016 [P] [US2] Create `tests/unit/test_outbound_routing.py` — tests for callback ob_ routing:
   - Quote-reply with `ob_xxxxxx` → matches outbound context → injects to AgentStudio
   - Quote-reply with expired `ob_xxxxxx` → falls back to existing routing
   - Quote-reply with invalid `ob_xxxxxx` (not in DB) → falls back to existing routing
@@ -140,8 +140,8 @@
 
 ### Edge case validation
 
-- [ ] T017 [US1] Verify repeated dispatch of the same message generates different `short_id` values (each forward creates new OutboundMessageContext)
-- [ ] T018 [US2] Verify `SHORT_ID_PATTERN` in `forward_service/utils/content.py` correctly extracts both `ob_xxxxxx` and legacy `[a-f0-9]{6,8}` short_ids
+- [X] T017 [US1] Verify repeated dispatch of the same message generates different `short_id` values (each forward creates new OutboundMessageContext)
+- [X] T018 [US2] Verify `SHORT_ID_PATTERN` in `forward_service/utils/content.py` correctly extracts both `ob_xxxxxx` and legacy `[a-f0-9]{6,8}` short_ids
 
 **Checkpoint**: All tests pass — both user stories verified with edge cases.
 
