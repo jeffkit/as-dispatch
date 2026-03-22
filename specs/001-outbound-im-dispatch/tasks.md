@@ -151,10 +151,10 @@
 
 **Purpose**: Documentation, configuration, and cleanup tasks.
 
-- [ ] T019 [P] Update `specs/001-outbound-im-dispatch/quickstart.md` with end-to-end manual test steps for both US1 and US2
-- [ ] T020 [P] Add environment variable documentation (AS_DISPATCH_URL, JWT_SECRET_KEY) to AgentStudio's config/README
-- [ ] T021 Code review: verify all new modules have `logger = logging.getLogger(__name__)` (P6 compliance) and complete type annotations (P2 compliance)
-- [ ] T022 Run `quickstart.md` end-to-end validation scenario
+- [X] T019 [P] Update `specs/001-outbound-im-dispatch/quickstart.md` with end-to-end manual test steps for both US1 and US2
+- [X] T020 [P] Add environment variable documentation (AS_DISPATCH_URL, JWT_SECRET_KEY) to AgentStudio's config/README
+- [X] T021 Code review: verify all new modules have `logger = logging.getLogger(__name__)` (P6 compliance) and complete type annotations (P2 compliance)
+- [X] T022 Run `quickstart.md` end-to-end validation scenario
 
 ---
 
