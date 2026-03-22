@@ -281,6 +281,62 @@ async def handle_callback(
         if quoted_message_id:
             logger.info(f"检测到引用消息 ID: quoted_message_id={quoted_message_id}")
         
+        # === Outbound dispatch 路由: ob_ 前缀 short_id → 直接注入 AgentStudio ===
+        if quoted_short_id and quoted_short_id.startswith("ob_"):
+            try:
+                from ..repository import get_outbound_context_repository
+                db_mgr = get_db_manager()
+                async with db_mgr.get_session() as ob_session:
+                    ob_repo = get_outbound_context_repository(ob_session)
+                    ob_ctx = await ob_repo.find_context_by_message_id(quoted_short_id)
+                    if ob_ctx and ob_ctx.session_id:
+                        logger.info(
+                            f"ob_ 路由匹配: short_id={quoted_short_id}, "
+                            f"session_id={ob_ctx.session_id[:8]}..."
+                        )
+                        # 从 bot 配置中获取 AgentStudio URL
+                        agentstudio_url = bot.forward_config.get_url() if hasattr(bot, 'forward_config') else ""
+                        if not agentstudio_url:
+                            agentstudio_url = bot.get_url() if hasattr(bot, 'get_url') else ""
+                        if agentstudio_url:
+                            # 去除末尾路径，保留 base URL
+                            from urllib.parse import urlparse
+                            parsed = urlparse(agentstudio_url)
+                            base_url = f"{parsed.scheme}://{parsed.netloc}"
+                            inject_url = f"{base_url}/api/agui/sessions/{ob_ctx.session_id}/inject"
+                            inject_body = {
+                                "message": content or "",
+                                "sender": "wecom-reply",
+                                "workspace": ob_ctx.content_preview[:50] if ob_ctx.content_preview else "",
+                            }
+                            try:
+                                import httpx
+                                async with httpx.AsyncClient(timeout=10.0, verify=False) as http_client:
+                                    resp = await http_client.post(inject_url, json=inject_body)
+                                    if resp.status_code == 200:
+                                        await ob_repo.mark_context_replied(ob_ctx.id)
+                                        await ob_session.commit()
+                                        logger.info(
+                                            f"ob_ 路由注入成功: session_id={ob_ctx.session_id[:8]}, "
+                                            f"short_id={quoted_short_id}"
+                                        )
+                                        return {"errcode": 0, "errmsg": "outbound reply injected"}
+                                    else:
+                                        logger.error(
+                                            f"AgentStudio inject 失败: status={resp.status_code}, "
+                                            f"body={resp.text[:200]}"
+                                        )
+                            except Exception as inject_err:
+                                logger.error(f"AgentStudio inject 调用异常: {inject_err}", exc_info=True)
+                        else:
+                            logger.warning(f"ob_ 路由匹配但无法获取 AgentStudio URL，回退到默认路由")
+                    elif ob_ctx:
+                        logger.warning(f"ob_ 路由匹配但上下文无 session_id: short_id={quoted_short_id}")
+                    else:
+                        logger.info(f"ob_ short_id={quoted_short_id} 未匹配到有效上下文，回退到默认路由")
+            except Exception as e:
+                logger.warning(f"ob_ 路由处理失败（回退到默认路由）: {e}")
+        
         # === 出站消息上下文路由：引用回复 → 查找原始任务上下文 ===
         outbound_ctx = None
         if quoted_message_id:

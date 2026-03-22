@@ -99,7 +99,7 @@
 
 ### Phase 3B: as-dispatch — 回调路由增强
 
-- [ ] T013 [US2] Modify `forward_service/routes/callback.py` — add `ob_` prefix short_id routing branch:
+- [X] T013 [US2] Modify `forward_service/routes/callback.py` — add `ob_` prefix short_id routing branch:
   - In the quote-reply routing section, BEFORE the existing `quoted_message_id` logic, add:
     1. Check if `quoted_short_id` starts with `ob_`
     2. If yes: query `find_context_by_message_id(quoted_short_id)` from OutboundMessageContext
