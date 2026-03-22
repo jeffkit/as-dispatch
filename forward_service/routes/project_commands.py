@@ -671,34 +671,20 @@ async def handle_project_command(
 def get_user_help() -> str:
     """
     获取新用户帮助信息（没有绑定任何项目）
-    
+
     当 Bot 没有配置转发目标且用户没有绑定项目时显示
     """
     from datetime import datetime
     timestamp = datetime.now().strftime("%H:%M:%S")
-    
+
     return f"""👋 **欢迎使用！**
 
-请先绑定一个 Agent 项目：
+💬 **会话管理**
+• `/s` - 列出会话
+• `/r` - 重置会话
+• `/c <ID>` - 切换会话
 
-📦 **添加项目**
-```
-/ap <项目ID> <URL> --api-key <API_KEY>
-```
-
-示例:
-```
-/ap test https://agentstudio.woa.com/a2a/xxx/messages --api-key sk-xxx
-```
-
-📖 **获取 URL 和 API-Key**
-👉 https://agentstudio.woa.com/docs/qywx-bot
-
-💡 常用命令：
-• `/lp` - 查看我的项目
-• `/use <ID>` - 切换到指定项目
-• `/cp` - 当前项目
-• `/help` - 帮助
+📖 文档：https://agentstudio.woa.com/docs/qywx-bot
 
 ---
 ⏱️ {timestamp}"""
@@ -710,15 +696,8 @@ def get_regular_user_help() -> str:
     """
     from datetime import datetime
     timestamp = datetime.now().strftime("%H:%M:%S")
-    
-    return f"""📖 **用户帮助**
 
-📦 **项目管理**
-• `/lp` (`/projects`) - 查看我的项目
-• `/ap <ID> <URL> --api-key <KEY>` - 添加项目
-• `/u <ID>` (`/use`) - 切换项目
-• `/cp` (`/current`) - 当前项目
-• `/rp <ID>` (`/remove-project`) - 删除项目
+    return f"""📖 **用户帮助**
 
 💬 **会话管理**
 • `/s` - 列出会话
@@ -737,7 +716,7 @@ def get_admin_full_help() -> str:
     """
     from datetime import datetime
     timestamp = datetime.now().strftime("%H:%M:%S")
-    
+
     return f"""📖 **管理员帮助**
 
 🔧 **系统状态**
@@ -757,15 +736,6 @@ def get_admin_full_help() -> str:
 
 🏥 **运维**
 • `/health` - Agent 可达性检查
-
----
-
-📦 **项目管理**
-• `/lp` (`/projects`) - 查看我的项目
-• `/ap <ID> <URL> --api-key <KEY>` - 添加项目
-• `/u <ID>` (`/use`) - 切换项目
-• `/cp` (`/current`) - 当前项目
-• `/rp <ID>` (`/remove-project`) - 删除项目
 
 💬 **会话管理**
 • `/s` - 列出会话
