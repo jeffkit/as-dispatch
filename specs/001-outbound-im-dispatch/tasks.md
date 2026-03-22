@@ -68,20 +68,20 @@
 
 ### Phase 2D: AgentStudio — 前端 UI
 
-- [ ] T009 [P] [US1] Create `agentstudio/frontend/src/types/dispatch.ts` — define TypeScript types:
+- [X] T009 [P] [US1] Create `agentstudio/frontend/src/types/dispatch.ts` — define TypeScript types:
   - `DispatchIMRequest`: sessionId, messageContent, botKey, chatId, projectName?, agentId?
   - `DispatchIMResponse`: success, shortId?, error?
   - `DispatchStatus`: 'idle' | 'sending' | 'sent' | 'error'
-- [ ] T010 [US1] Create `agentstudio/frontend/src/hooks/useDispatchIM.ts` — implement dispatch hook:
+- [X] T010 [US1] Create `agentstudio/frontend/src/hooks/useDispatchIM.ts` — implement dispatch hook:
   - `dispatchToIM(request)`: call `POST /api/agui/dispatch-im`
   - Track per-message `DispatchStatus` state
   - Return `{ dispatchToIM, getStatus, resetStatus }`
-- [ ] T011 [US1] Create `agentstudio/frontend/src/components/chat/DispatchIMDialog.tsx` — confirmation dialog:
+- [X] T011 [US1] Create `agentstudio/frontend/src/components/chat/DispatchIMDialog.tsx` — confirmation dialog:
   - Show target group info (chatId / bot name)
   - Show message preview (first 100 chars)
   - Confirm / Cancel buttons
   - Loading state during dispatch
-- [ ] T012 [US1] Modify `agentstudio/frontend/src/components/chat/MessageBubble.tsx`:
+- [X] T012 [US1] Modify `agentstudio/frontend/src/components/agentChat/ChatMessageList.tsx`:
   - Add forward icon button on AI message bubbles (only when project has `botKey` + `chatId` configured)
   - Wire button → open `DispatchIMDialog`
   - Show dispatch status indicator: sending spinner, "已转发" icon+tooltip (with short_id), error state
