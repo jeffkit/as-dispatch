@@ -335,14 +335,33 @@ async def _cancel_typing_indicator(
 
 
 async def _persist_get_updates_buf(bot_key: str, buf: str) -> None:
-    """将 get_updates_buf 持久化到数据库的 platform_config 中"""
+    """将 get_updates_buf 持久化到数据库的 platform_config 中。
+
+    安全机制: 从内存 poller 补全关键凭据字段（bot_token, ilink_bot_id,
+    login_status），防止并发 read-modify-write 或 session 缓存导致
+    credentials 被意外覆盖为空。
+    """
     try:
+        credential_fields: dict[str, str] = {}
+        poller = weixin_pollers.get(bot_key)
+        if poller:
+            if poller.client.bot_token:
+                credential_fields["bot_token"] = poller.client.bot_token
+            if poller.ilink_bot_id:
+                credential_fields["ilink_bot_id"] = poller.ilink_bot_id
+            credential_fields["login_status"] = "logged_in"
+
         db = get_db_manager()
         async with db.get_session() as session:
             bot_repo = get_chatbot_repository(session)
             bot = await bot_repo.get_by_bot_key(bot_key)
             if bot:
                 platform_config = bot.get_platform_config()
+
+                for key, value in credential_fields.items():
+                    if not platform_config.get(key):
+                        platform_config[key] = value
+
                 platform_config["get_updates_buf"] = buf
                 platform_config["last_active_at"] = datetime.now(timezone.utc).isoformat()
                 await bot_repo.update(
