@@ -299,11 +299,16 @@ async def handle_callback(
                         if not agentstudio_url:
                             agentstudio_url = bot.get_url() if hasattr(bot, 'get_url') else ""
                         if agentstudio_url:
-                            # 去除末尾路径，保留 base URL
                             from urllib.parse import urlparse
+                            from ..tunnel import rewrite_tunnel_url
                             parsed = urlparse(agentstudio_url)
                             base_url = f"{parsed.scheme}://{parsed.netloc}"
                             inject_url = f"{base_url}/api/agui/sessions/{ob_ctx.session_id}/inject"
+                            # .tunnel 虚拟域名需要通过本地 proxy 路由
+                            rewritten = rewrite_tunnel_url(inject_url)
+                            if rewritten:
+                                logger.info(f"ob_ inject URL 重写: {inject_url[:60]}... -> {rewritten[:60]}...")
+                                inject_url = rewritten
                             inject_body = {
                                 "message": content or "",
                                 "sender": "wecom-reply",
