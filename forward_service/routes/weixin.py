@@ -109,7 +109,7 @@ def _parse_weixin_message(raw_msg: dict[str, Any], bot_key: str) -> dict[str, An
 
     from_user_id = raw_msg.get("from_user_id", "")
 
-    return {
+    result: dict[str, Any] = {
         "type": "direct",
         "sender_id": from_user_id,
         "sender_name": from_user_id[:8] if from_user_id else "unknown",
@@ -119,6 +119,12 @@ def _parse_weixin_message(raw_msg: dict[str, Any], bot_key: str) -> dict[str, An
         "message_id": str(raw_msg.get("message_id", "")),
         "_bot_key": bot_key,
     }
+
+    # 非文本消息：传递完整 item_list 供媒体处理模块使用
+    if item_type != WEIXIN_MSG_TYPE_TEXT:
+        result["_media_items"] = item_list
+
+    return result
 
 
 async def handle_weixin_message(raw_data: dict[str, Any], bot_key: str) -> None:
