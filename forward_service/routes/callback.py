@@ -312,11 +312,12 @@ async def handle_callback(
                             inject_body = {
                                 "message": content or "",
                                 "sender": "wecom-reply",
-                                "workspace": ob_ctx.content_preview[:50] if ob_ctx.content_preview else "",
+                                "workspace": ob_ctx.project_name or "default",
+                                "fireAndForget": True,
                             }
                             try:
                                 import httpx
-                                async with httpx.AsyncClient(timeout=10.0, verify=False) as http_client:
+                                async with httpx.AsyncClient(timeout=15.0, verify=False) as http_client:
                                     resp = await http_client.post(inject_url, json=inject_body)
                                     if resp.status_code == 200:
                                         await ob_repo.mark_context_replied(ob_ctx.id)

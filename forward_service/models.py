@@ -1072,6 +1072,12 @@ class OutboundMessageContext(Base):
         comment="消息内容预览（前 200 字符）"
     )
 
+    project_name: Mapped[Optional[str]] = mapped_column(
+        String(200),
+        nullable=True,
+        comment="项目名称（用于回复注入时定位 workspace）"
+    )
+
     status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

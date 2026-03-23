@@ -1463,6 +1463,7 @@ class OutboundMessageContextRepository:
         agent_id: Optional[str] = None,
         session_id: Optional[str] = None,
         content_preview: Optional[str] = None,
+        project_name: Optional[str] = None,
     ) -> OutboundMessageContext:
         """
         保存出站消息上下文
@@ -1475,6 +1476,7 @@ class OutboundMessageContextRepository:
             agent_id: 发送消息的 Agent ID（可选）
             session_id: Agent 会话 ID（可选）
             content_preview: 消息内容预览（可选，自动截断到 200 字符）
+            project_name: 项目名称（可选，用于回复注入时定位 workspace）
 
         Returns:
             创建的 OutboundMessageContext 对象
@@ -1487,6 +1489,7 @@ class OutboundMessageContextRepository:
             bot_key=bot_key,
             chat_id=chat_id,
             content_preview=content_preview[:200] if content_preview else None,
+            project_name=project_name,
         )
         self.session.add(ctx)
         await self.session.flush()

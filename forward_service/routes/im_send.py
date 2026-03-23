@@ -108,6 +108,7 @@ async def send_to_im(
                 agent_id=body.agent_id,
                 session_id=body.session_id,
                 content_preview=body.message_content[:200],
+                project_name=body.project_name,
             )
             await session.commit()
         logger.info(f"出站消息上下文已保存: short_id={short_id}, session_id={body.session_id[:8]}...")
