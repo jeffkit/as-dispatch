@@ -187,6 +187,111 @@ class WeixinClient:
         )
         return resp.json()
 
+    # ============== 多媒体消息 ==============
+
+    async def get_upload_url(
+        self,
+        filekey: str,
+        media_type: int,
+        to_user_id: str,
+        rawsize: int,
+        rawfilemd5: str,
+        filesize: int,
+        aeskey: str,
+        no_need_thumb: bool = True,
+    ) -> dict[str, Any]:
+        """
+        获取 CDN 预签名上传 URL。
+
+        POST /ilink/bot/getuploadurl
+
+        Args:
+            filekey: 文件标识 (随机生成)
+            media_type: 媒体类型 (1=IMAGE, 2=VIDEO, 3=FILE, 4=VOICE)
+            to_user_id: 目标用户 ID
+            rawsize: 明文文件大小
+            rawfilemd5: 明文文件 MD5
+            filesize: 密文文件大小 (AES-128-ECB 加密后)
+            aeskey: AES key hex 编码
+            no_need_thumb: 不需要缩略图上传 URL
+
+        Returns:
+            {"upload_param": "...", "thumb_upload_param": "..."}
+        """
+        body: dict[str, Any] = {
+            "filekey": filekey,
+            "media_type": media_type,
+            "to_user_id": to_user_id,
+            "rawsize": rawsize,
+            "rawfilemd5": rawfilemd5,
+            "filesize": filesize,
+            "aeskey": aeskey,
+            "no_need_thumb": no_need_thumb,
+            "base_info": _build_base_info(),
+        }
+        resp = await self._http.post(
+            "/ilink/bot/getuploadurl",
+            headers=self._auth_headers(),
+            json=body,
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        logger.debug(
+            f"[weixin] getUploadUrl 响应: filekey={filekey}, "
+            f"has_upload_param={'upload_param' in data}"
+        )
+        return data
+
+    async def send_media_message(
+        self,
+        to_user_id: str,
+        context_token: str,
+        item_list: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """
+        发送含媒体项的消息。
+
+        POST /ilink/bot/sendmessage
+
+        Args:
+            to_user_id: 目标用户 ID
+            context_token: 会话 context_token
+            item_list: 消息项列表，支持:
+                - {"type": 1, "text_item": {"text": "..."}}
+                - {"type": 2, "image_item": {...}}
+                - {"type": 4, "file_item": {...}}
+                - {"type": 5, "video_item": {...}}
+
+        Returns:
+            API 响应 dict
+        """
+        client_id = _generate_client_id()
+        body: dict[str, Any] = {
+            "msg": {
+                "from_user_id": "",
+                "to_user_id": to_user_id,
+                "client_id": client_id,
+                "message_type": 2,  # BOT
+                "message_state": 2,  # FINISH
+                "item_list": item_list,
+                "context_token": context_token,
+            },
+            "base_info": _build_base_info(),
+        }
+        resp = await self._http.post(
+            "/ilink/bot/sendmessage",
+            headers=self._auth_headers(),
+            json=body,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        logger.info(
+            f"[weixin] 媒体消息已发送: to={to_user_id}, "
+            f"items={len(item_list)}"
+        )
+        return resp.json()
+
     # ============== 打字指示器 (US6) ==============
 
     async def get_config(
