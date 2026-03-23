@@ -281,7 +281,8 @@ async def handle_callback(
         if quoted_message_id:
             logger.info(f"检测到引用消息 ID: quoted_message_id={quoted_message_id}")
         
-        # === Outbound dispatch 路由: ob_ 前缀 short_id → 直接注入 AgentStudio ===
+        # === Outbound dispatch 路由: ob_ 前缀 short_id → 设置 session_id 并走正常转发 ===
+        ob_dispatch_session_id = None
         if quoted_short_id and quoted_short_id.startswith("ob_"):
             try:
                 from ..repository import get_outbound_context_repository
@@ -290,52 +291,14 @@ async def handle_callback(
                     ob_repo = get_outbound_context_repository(ob_session)
                     ob_ctx = await ob_repo.find_context_by_message_id(quoted_short_id)
                     if ob_ctx and ob_ctx.session_id:
+                        ob_dispatch_session_id = ob_ctx.session_id
                         logger.info(
                             f"ob_ 路由匹配: short_id={quoted_short_id}, "
-                            f"session_id={ob_ctx.session_id[:8]}..."
+                            f"session_id={ob_ctx.session_id[:8]}... "
+                            f"→ 使用此 session_id 走正常转发流程"
                         )
-                        # 从 bot 配置中获取 AgentStudio URL
-                        agentstudio_url = bot.forward_config.get_url() if hasattr(bot, 'forward_config') else ""
-                        if not agentstudio_url:
-                            agentstudio_url = bot.get_url() if hasattr(bot, 'get_url') else ""
-                        if agentstudio_url:
-                            from urllib.parse import urlparse
-                            from ..tunnel import rewrite_tunnel_url
-                            parsed = urlparse(agentstudio_url)
-                            base_url = f"{parsed.scheme}://{parsed.netloc}"
-                            inject_url = f"{base_url}/api/agui/sessions/{ob_ctx.session_id}/inject"
-                            # .tunnel 虚拟域名需要通过本地 proxy 路由
-                            rewritten = rewrite_tunnel_url(inject_url)
-                            if rewritten:
-                                logger.info(f"ob_ inject URL 重写: {inject_url[:60]}... -> {rewritten[:60]}...")
-                                inject_url = rewritten
-                            inject_body = {
-                                "message": content or "",
-                                "sender": "wecom-reply",
-                                "workspace": ob_ctx.project_name or "default",
-                                "fireAndForget": True,
-                            }
-                            try:
-                                import httpx
-                                async with httpx.AsyncClient(timeout=15.0, verify=False) as http_client:
-                                    resp = await http_client.post(inject_url, json=inject_body)
-                                    if resp.status_code == 200:
-                                        await ob_repo.mark_context_replied(ob_ctx.id)
-                                        await ob_session.commit()
-                                        logger.info(
-                                            f"ob_ 路由注入成功: session_id={ob_ctx.session_id[:8]}, "
-                                            f"short_id={quoted_short_id}"
-                                        )
-                                        return {"errcode": 0, "errmsg": "outbound reply injected"}
-                                    else:
-                                        logger.error(
-                                            f"AgentStudio inject 失败: status={resp.status_code}, "
-                                            f"body={resp.text[:200]}"
-                                        )
-                            except Exception as inject_err:
-                                logger.error(f"AgentStudio inject 调用异常: {inject_err}", exc_info=True)
-                        else:
-                            logger.warning(f"ob_ 路由匹配但无法获取 AgentStudio URL，回退到默认路由")
+                        await ob_repo.mark_context_replied(ob_ctx.id)
+                        await ob_session.commit()
                     elif ob_ctx:
                         logger.warning(f"ob_ 路由匹配但上下文无 session_id: short_id={quoted_short_id}")
                     else:
@@ -608,8 +571,14 @@ async def handle_callback(
         is_quote_pinned = False  # 标记是否为引用回复指定的会话
         outbound_task_id = None  # 从出站上下文注入的 task_id
         
+        # 优先级 0: ob_ dispatch 路由（从 AgentStudio 转发到企微后的引用回复）
+        if ob_dispatch_session_id:
+            current_session_id = ob_dispatch_session_id
+            is_quote_pinned = True
+            logger.info(f"ob_ dispatch 路由: 使用 session_id={ob_dispatch_session_id[:8]}...")
+        
         # 优先级 1: 出站消息上下文路由（quoted_message_id → DB 查找 → 注入 session/task/agent）
-        if outbound_ctx and outbound_ctx.session_id:
+        if not current_session_id and outbound_ctx and outbound_ctx.session_id:
             current_session_id = outbound_ctx.session_id
             outbound_task_id = outbound_ctx.task_id
             is_quote_pinned = True
