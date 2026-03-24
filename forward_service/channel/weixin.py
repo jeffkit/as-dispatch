@@ -77,18 +77,14 @@ class WeixinAdapter(ChannelAdapter):
 
         忽略条件：
         - 群聊消息（group_id 非空）— 仅处理私聊
-        - Bot 自身消息（message_type != USER）
+
+        非用户消息（Bot 自身回复等）已在 _parse_weixin_message() 中通过
+        原始 iLinkAI 整数类型码过滤（返回 None）。parsed dict 中的
+        message_type 是字符串（如 "text"），不能与整数常量比较。
         """
         if raw_data.get("group_id"):
             logger.debug(
                 f"[weixin] 忽略群聊消息: group_id={raw_data.get('group_id')}"
-            )
-            return True
-
-        msg_type = raw_data.get("message_type")
-        if msg_type is not None and msg_type != WEIXIN_MESSAGE_TYPE_USER:
-            logger.debug(
-                f"[weixin] 忽略非用户消息: message_type={msg_type}"
             )
             return True
 

@@ -645,7 +645,7 @@ class ConfigDB:
                 bot = await bot_repo.create(
                     bot_key=data["bot_key"],
                     name=data["name"],
-                    url_template=data.get("target_url", ""),
+                    target_url=data.get("target_url", ""),
                     api_key=data.get("api_key", ""),
                     timeout=data.get("timeout", DEFAULT_TIMEOUT),
                     access_mode=data.get("access_mode", "allow_all"),

@@ -40,7 +40,8 @@ class ChatbotRepository:
         self,
         bot_key: str,
         name: str,
-        url_template: str,
+        url_template: str = "",
+        target_url: str = "",
         agent_id: str = "",
         api_key: str = "",
         timeout: int = 300,
@@ -57,7 +58,8 @@ class ChatbotRepository:
         Args:
             bot_key: Bot Key (唯一)
             name: Bot 名称
-            url_template: 转发 URL 模板
+            url_template: 转发 URL 模板 (已废弃，保留向后兼容)
+            target_url: 转发目标 URL (推荐使用)
             agent_id: Agent ID
             api_key: API Key
             timeout: 超时时间
@@ -74,6 +76,7 @@ class ChatbotRepository:
         bot = Chatbot(
             bot_key=bot_key,
             name=name,
+            target_url=target_url,
             url_template=url_template,
             agent_id=agent_id,
             api_key=api_key,
