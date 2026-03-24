@@ -51,14 +51,29 @@ class ForwardConfig:
         return self.target_url
 
 
+def _parse_data_uri(url: str) -> tuple[str, str] | None:
+    """
+    解析 data: URI，返回 (base64_data, media_type)。
+    格式: data:<mediaType>;base64,<data>
+    """
+    if not url.startswith("data:"):
+        return None
+    try:
+        header, data = url.split(",", 1)
+        media_type = header.split(":")[1].split(";")[0]
+        return data, media_type
+    except (IndexError, ValueError):
+        return None
+
+
 async def download_images_as_base64(
     image_urls: list[str],
 ) -> list[dict]:
     """
-    下载图片并转为 base64 编码
+    下载图片并转为 base64 编码，支持 HTTP URL 和 data: URI
 
     Args:
-        image_urls: 图片 URL 列表
+        image_urls: 图片 URL 列表（支持 http(s):// 和 data: 格式）
 
     Returns:
         [{"data": "base64...", "mediaType": "image/jpeg"}, ...]
@@ -67,15 +82,21 @@ async def download_images_as_base64(
         return []
 
     images = []
-    async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)) as client:
-        for url in image_urls:
-            try:
+    for url in image_urls:
+        parsed = _parse_data_uri(url)
+        if parsed:
+            data, media_type = parsed
+            images.append({"data": data, "mediaType": media_type})
+            logger.info(f"data: URI 图片已解析: type={media_type}, size={len(data)}chars")
+            continue
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)) as client:
                 resp = await client.get(url)
                 if resp.status_code != 200:
                     logger.warning(f"下载图片失败: url={url}, status={resp.status_code}")
                     continue
 
-                # 检测 MIME 类型
                 content_type = resp.headers.get("content-type", "")
                 if "jpeg" in content_type or "jpg" in content_type:
                     media_type = "image/jpeg"
@@ -86,7 +107,6 @@ async def download_images_as_base64(
                 elif "webp" in content_type:
                     media_type = "image/webp"
                 else:
-                    # 从 URL 路径猜测
                     path = urlparse(url).path.lower()
                     guessed, _ = mimetypes.guess_type(path)
                     media_type = guessed if guessed and guessed.startswith("image/") else "image/jpeg"
@@ -94,8 +114,8 @@ async def download_images_as_base64(
                 encoded = base64.b64encode(resp.content).decode("utf-8")
                 images.append({"data": encoded, "mediaType": media_type})
                 logger.info(f"图片下载成功: url={url[:80]}..., size={len(resp.content)}bytes, type={media_type}")
-            except Exception as e:
-                logger.warning(f"下载图片异常: url={url}, error={e}")
+        except Exception as e:
+            logger.warning(f"下载图片异常: url={url}, error={e}")
     return images
 
 
