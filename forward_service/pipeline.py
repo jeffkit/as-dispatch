@@ -774,6 +774,10 @@ async def _handle_slash_command(
         await _send(adapter, inbound, response_msg, bot.bot_key)
         return {"errcode": 0, "errmsg": "slash command handled"}
 
+    elif cmd_type == "id":
+        await _send(adapter, inbound, f"🆔 Chat ID: `{inbound.chat_id}`", bot.bot_key)
+        return {"errcode": 0, "errmsg": "slash command handled"}
+
     elif cmd_type in ("bots", "bot", "pending", "recent", "errors", "health"):
         is_admin = await h["check_is_admin"](inbound.user_id, inbound.user_alias)
         if not is_admin:

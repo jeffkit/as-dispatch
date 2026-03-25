@@ -91,7 +91,8 @@ async def handle_intelligent_message(
                 cmd_arg=slash_cmd[1],
                 extra_msg=slash_cmd[2],
                 session_key=session_key,
-                current_session_id=current_session_id
+                current_session_id=current_session_id,
+                chat_id=from_user,
             )
             return client.build_text_xml(
                 to_user=from_user,
@@ -161,7 +162,8 @@ async def handle_intelligent_command(
     cmd_arg: Optional[str],
     extra_msg: Optional[str],
     session_key: str,
-    current_session_id: Optional[str]
+    current_session_id: Optional[str],
+    chat_id: Optional[str] = None,
 ) -> str:
     """
     处理智能机器人 Slash 命令
@@ -193,11 +195,14 @@ async def handle_intelligent_command(
             else:
                 return "✅ 已准备好开始新对话，请发送消息"
         
+        elif cmd_type == "id":
+            return f"🆔 Chat ID: `{chat_id}`"
+
         elif cmd_type == "change":
             # /change <short_id> 或 /c <short_id> - 切换会话
             if not cmd_arg:
                 return "❌ 请提供会话 ID，例如: `/c abc123`"
-            
+
             target_session = await session_mgr.change_session(
                 from_user, session_key, cmd_arg, bot_key=bot.bot_key
             )

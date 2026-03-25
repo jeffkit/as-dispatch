@@ -510,7 +510,7 @@ async def handle_callback(
                         response_msg = get_admin_full_help()
                     else:
                         response_msg = get_regular_user_help()
-                    
+
                     await send_reply(
                         chat_id=chat_id,
                         message=response_msg,
@@ -519,7 +519,18 @@ async def handle_callback(
                         mentioned_list=mentioned_list,
                     )
                     return {"errcode": 0, "errmsg": "slash command handled"}
-                
+
+                elif cmd_type == "id":
+                    # /id 命令对所有用户可用，返回当前 Chat ID
+                    await send_reply(
+                        chat_id=chat_id,
+                        message=f"🆔 Chat ID: `{chat_id}`",
+                        msg_type="text",
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
+                    )
+                    return {"errcode": 0, "errmsg": "slash command handled"}
+
                 elif cmd_type in ("bots", "bot", "pending", "recent", "errors", "health"):
                     # 其他管理员命令
                     is_admin = await check_is_admin(from_user_id, from_user_alias)

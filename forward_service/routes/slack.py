@@ -193,6 +193,13 @@ async def handle_slash_command(
                 thread_ts=thread_ts
             )
         
+        elif cmd_type == "id":
+            await slack_client.post_message(
+                channel=channel,
+                text=f"🆔 Chat ID: `{channel}`",
+                thread_ts=thread_ts
+            )
+
         elif cmd_type == "change":
             # /change <short_id> 或 /c <short_id> - 切换会话
             if not cmd_arg:

@@ -145,18 +145,11 @@ def get_admin_full_help() -> str:
     current_time = datetime.now().strftime("%H:%M:%S")
     return f"""📖 **管理员帮助**
 
-📦 **项目管理**
-  `/ap <ID> <URL> [--api-key KEY] [--default]` - 添加项目
-  `/lp` - 查看我的项目
-  `/u <ID>` - 切换项目
-  `/sd <ID>` - 设为默认
-  `/rp <ID>` - 删除项目
-  `/cp` - 当前项目
-
 💬 **会话管理**
   `/s` - 列出会话
   `/r` - 重置会话
   `/c <ID>` - 切换会话
+  `/id` - 获取当前 Chat ID
 
 🔧 **管理员命令**
   `/ping` - 健康检查
@@ -178,21 +171,11 @@ def get_regular_user_help() -> str:
     current_time = datetime.now().strftime("%H:%M:%S")
     return f"""📖 **用户帮助**
 
-📦 **项目管理**
-  `/ap <ID> <URL> [--api-key KEY] [--default]` - 添加项目
-  `/lp` - 查看我的项目
-  `/u <ID>` - 切换项目
-  `/sd <ID>` - 设为默认
-  `/rp <ID>` - 删除项目
-  `/cp` - 当前项目
-
 💬 **会话管理**
   `/s` - 列出会话
   `/r` - 重置会话
   `/c <ID>` - 切换会话
-
-💡 **如何获取 URL 和 API Key**
-  请参考文档：https://agentstudio.woa.com/docs/qywx-bot
+  `/id` - 获取当前 Chat ID
 
 ⏱️ {current_time}"""
 

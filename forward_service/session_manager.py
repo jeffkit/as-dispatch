@@ -83,6 +83,7 @@ SLASH_COMMANDS = {
     "ping": re.compile(r'^/(ping|p)\s*$', re.IGNORECASE),
     "status": re.compile(r'^/(status|st)\s*$', re.IGNORECASE),
     "help": re.compile(r'^/(help|h)\s*$', re.IGNORECASE),
+    "id": re.compile(r'^/(id)\s*$', re.IGNORECASE),
     
     # Bot 相关（管理员）
     "bots": re.compile(r'^/(bots)\s*$', re.IGNORECASE),
