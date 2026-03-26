@@ -68,6 +68,13 @@ async def lifespan(app: FastAPI):
         init_session_manager(get_db_manager())
         logger.info("  会话管理器已初始化")
 
+        try:
+            from .services.async_task_service import get_async_task_service
+
+            await get_async_task_service().recover_pending_tasks()
+        except Exception as e:
+            logger.warning(f"  异步任务恢复失败（不影响启动）: {e}")
+
         # 启动时清理过期的 ProcessingSession 锁（防止服务崩溃导致的死锁）
         try:
             from .repository import get_processing_session_repository

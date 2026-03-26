@@ -376,6 +376,7 @@ async def forward_to_agent_with_user_project(
     session_id: str | None = None,
     current_project_id: str | None = None,
     image_urls: list[str] | None = None,
+    forward_config_override: ForwardConfig | None = None,
 ) -> AgentResult | None:
     """
     使用用户项目配置转发消息到 Agent（支持三层架构）
@@ -390,12 +391,16 @@ async def forward_to_agent_with_user_project(
         session_id: 会话 ID（可选）
         current_project_id: 当前会话指定的项目 ID（可选）
         image_urls: 图片 URL 列表（可选）
+        forward_config_override: 若提供则跳过 DB 解析，直接使用该快照（异步任务执行用）
 
     Returns:
         AgentResult 或 None（包含项目信息）
     """
-    # 获取用户的转发配置（自动选择优先级）
-    forward_config = await get_forward_config_for_user(bot_key, chat_id, current_project_id)
+    # 获取用户的转发配置（自动选择优先级），或由调用方注入快照
+    if forward_config_override is not None:
+        forward_config = forward_config_override
+    else:
+        forward_config = await get_forward_config_for_user(bot_key, chat_id, current_project_id)
 
     # 获取目标 URL
     target_url = forward_config.get_url()

@@ -10,6 +10,7 @@ Forward Service 数据库模型
 - 生产: MySQL
 """
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Optional
 try:
     from typing import Literal
@@ -33,6 +34,15 @@ class Base(DeclarativeBase):
 # ============== 枚举类型定义 ==============
 
 AccessMode = Literal["allow_all", "whitelist", "blacklist"]
+
+
+class AsyncTaskStatus(str, Enum):
+    """异步 Agent 任务状态"""
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    TIMEOUT = "TIMEOUT"
 
 
 # ============== 数据库模型 ==============
@@ -151,6 +161,37 @@ class Chatbot(Base):
         default=True,
         index=True,
         comment="是否启用"
+    )
+
+    # 异步回调模式（默认关闭，保持向后兼容）
+    async_mode: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+        comment="是否启用异步模式（企微先 200，后台执行 Agent）"
+    )
+
+    processing_message: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="异步模式下发给用户的处理中提示（None 时用系统默认）"
+    )
+
+    sync_timeout_seconds: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=30,
+        server_default="30",
+        comment="同步模式等待 Agent 的超时（秒），超时后可降级异步（US4）"
+    )
+
+    max_task_duration_seconds: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1800,
+        server_default="1800",
+        comment="异步任务最大允许时长（秒）"
     )
 
     # 时间戳
@@ -669,6 +710,134 @@ class ChatAccessRule(Base):
             "rule_type": self.rule_type,
             "remark": self.remark,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ============== 异步 Agent 任务模型 ==============
+
+class AsyncAgentTask(Base):
+    """
+    异步 Agent 任务表：企微回调快速 ACK 后，后台执行转发与回复。
+    状态机: PENDING → PROCESSING → COMPLETED / FAILED / TIMEOUT
+    """
+    __tablename__ = "async_agent_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    task_id: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="业务任务 ID（短 UUID）",
+    )
+
+    bot_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    chat_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    from_user_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    chat_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="group",
+        comment="group / single",
+    )
+    mentioned_list: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="@ 列表 JSON",
+    )
+
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    image_urls: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="图片 URL JSON")
+
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    api_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    project_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    project_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    session_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    new_session_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="PENDING",
+        index=True,
+    )
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+
+    response_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    max_duration_seconds: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1800,
+    )
+    processing_message: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        default="正在为您处理，请稍候...",
+    )
+
+    __table_args__ = (
+        Index("idx_async_tasks_status", "status"),
+        Index("idx_async_tasks_bot_key", "bot_key"),
+        Index("idx_async_tasks_chat_id", "chat_id"),
+        Index("idx_async_tasks_created_at", "created_at"),
+        Index("idx_async_tasks_status_created", "status", "created_at"),
+    )
+
+    @property
+    def is_timed_out(self) -> bool:
+        """是否已超过允许执行时长（自创建时刻起）"""
+        start = self.created_at
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        deadline = start + timedelta(seconds=int(self.max_duration_seconds))
+        return datetime.now(timezone.utc) > deadline
+
+    def to_dict(self, include_api_key: bool = False) -> dict:
+        """序列化（默认掩码 api_key）"""
+        key_display = None
+        if self.api_key:
+            key_display = (self.api_key[:4] + "…") if not include_api_key else self.api_key
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "bot_key": self.bot_key,
+            "chat_id": self.chat_id,
+            "from_user_id": self.from_user_id,
+            "chat_type": self.chat_type,
+            "mentioned_list": self.mentioned_list,
+            "message": self.message,
+            "image_urls": self.image_urls,
+            "target_url": self.target_url,
+            "api_key": key_display,
+            "project_id": self.project_id,
+            "project_name": self.project_name,
+            "session_id": self.session_id,
+            "new_session_id": self.new_session_id,
+            "status": self.status,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "response_text": self.response_text,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "max_duration_seconds": self.max_duration_seconds,
+            "processing_message": self.processing_message,
         }
 
 
