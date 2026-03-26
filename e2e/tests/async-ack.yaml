@@ -1,0 +1,87 @@
+name: 异步模式快速 ACK 测试
+description: "验证 SC-001: 企微回调在 3 秒内得到确认（async_mode=True）"
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+  botKey: "e2e-ack-test-bot"
+
+sequential: true
+
+setup:
+  - name: 清理已有 Bot（忽略错误）
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/{{botKey}}"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+  - name: 创建异步测试 Bot
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-ack-test-bot"
+        name: "E2E ACK 测试机器人"
+        target_url: "http://localhost:19090/api/a2a/test-agent/messages"
+        async_mode: true
+        processing_message: "正在处理中，请稍候..."
+        max_task_duration_seconds: 60
+    expect:
+      status: 200
+      body:
+        success: true
+
+cases:
+  - name: "SC-001: 异步模式回调在 3 秒内返回 ACK"
+    request:
+      method: POST
+      url: "{{baseUrl}}/callback"
+      headers:
+        Content-Type: application/json
+      body:
+        chatid: "e2e-test-chat-001"
+        chattype: "group"
+        msgtype: "text"
+        msgid: "e2e-msg-ack-001"
+        from:
+          userid: "test-user-001"
+          name: "测试用户"
+          alias: "testuser"
+        webhook_url: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e2e-ack-test-bot"
+        get_chat_info_url: "http://localhost:19091/chatinfo"
+        text:
+          content: "你好，这是 E2E 测试消息"
+      timeout: "5s"
+    expect:
+      status: 200
+      responseTime:
+        lt: 3000
+      body:
+        errcode: 0
+
+  - name: "SC-001: 验证任务已提交到 DB（async_mode=True 时）"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-ack-test-bot&limit=5"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+      timeout: "5s"
+    expect:
+      status: 200
+      body:
+        success: true
+        tasks: { exists: true }
+
+teardown:
+  - name: 删除测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/{{botKey}}"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true

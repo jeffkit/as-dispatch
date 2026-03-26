@@ -1,0 +1,63 @@
+name: 异步任务 API 测试
+description: 验证 /api/admin/async-tasks 的列表和详情功能
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+cases:
+  - name: 列出异步任务（默认空列表）
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+        tasks: { exists: true }
+        limit: { gt: 0 }
+
+  - name: 按状态筛选任务
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?status=PENDING"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        tasks: { exists: true }
+
+  - name: 按 bot_key 筛选任务（无结果）
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=nonexistent-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+        tasks: { exists: true }
+
+  - name: 查询不存在的任务返回 404
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks/nonexistent-task-id-12345"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 404
+
+  - name: limit 参数有效
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?limit=5&offset=0"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        tasks: { exists: true }

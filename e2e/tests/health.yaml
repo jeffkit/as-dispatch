@@ -1,0 +1,26 @@
+name: 服务健康检查
+description: 验证 as-dispatch 服务正常运行
+
+variables:
+  baseUrl: "http://localhost:18083"
+
+cases:
+  - name: 根路径健康检查
+    request:
+      method: GET
+      url: "{{baseUrl}}/"
+    expect:
+      status: 200
+      body:
+        service: "Forward Service"
+        status: "running"
+
+  - name: 响应时间检查
+    request:
+      method: GET
+      url: "{{baseUrl}}/"
+      timeout: "3s"
+    expect:
+      status: 200
+      responseTime:
+        lt: 3000

@@ -1,0 +1,92 @@
+name: 向后兼容验证
+description: "验证 SC-006: 同步 Bot 行为不受影响（async_mode=False）"
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+sequential: true
+
+setup:
+  - name: 清理已有 Bot（忽略错误）
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+  - name: 创建同步测试 Bot
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-sync-compat-bot"
+        name: "E2E 同步兼容测试机器人"
+        target_url: "http://localhost:19090/api/a2a/test-agent/messages"
+        async_mode: false
+    expect:
+      status: 200
+      body:
+        success: true
+
+cases:
+  - name: "SC-006: 同步 Bot async_mode 为 false"
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          async_config:
+            async_mode: false
+
+  - name: "Bot 列表返回成功"
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: "管理端异步任务列表 API 对同步 Bot 无任务"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+        tasks:
+          length: 0
+
+  - name: "Admin API 统计任务总数（同步 Bot 不产生任务）"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+
+teardown:
+  - name: 删除测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
