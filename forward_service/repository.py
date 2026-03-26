@@ -61,6 +61,10 @@ class ChatbotRepository:
         platform: str = "wecom",
         owner_id: str | None = None,
         platform_config: dict | None = None,
+        async_mode: bool = False,
+        processing_message: str | None = None,
+        sync_timeout_seconds: int = 30,
+        max_task_duration_seconds: int = 1800,
     ) -> Chatbot:
         """
         创建新的 Bot 配置
@@ -96,6 +100,10 @@ class ChatbotRepository:
             enabled=enabled,
             platform=platform,
             owner_id=owner_id,
+            async_mode=async_mode,
+            processing_message=processing_message,
+            sync_timeout_seconds=sync_timeout_seconds,
+            max_task_duration_seconds=max_task_duration_seconds,
         )
         if platform_config:
             bot.set_platform_config(platform_config)
@@ -176,6 +184,10 @@ class ChatbotRepository:
         enabled: bool | None = None,
         owner_id: str | None = _UNSET,
         platform_config: dict | None = None,
+        async_mode: bool | None = None,
+        processing_message: str | None = None,
+        sync_timeout_seconds: int | None = None,
+        max_task_duration_seconds: int | None = None,
     ) -> Optional[Chatbot]:
         """
         更新 Bot 配置
@@ -222,6 +234,14 @@ class ChatbotRepository:
         if platform_config is not None:
             import json
             update_data["platform_config"] = json.dumps(platform_config, ensure_ascii=False)
+        if async_mode is not None:
+            update_data["async_mode"] = async_mode
+        if processing_message is not None:
+            update_data["processing_message"] = processing_message
+        if sync_timeout_seconds is not None:
+            update_data["sync_timeout_seconds"] = sync_timeout_seconds
+        if max_task_duration_seconds is not None:
+            update_data["max_task_duration_seconds"] = max_task_duration_seconds
 
         if not update_data:
             return await self.get_by_id(bot_id)
@@ -1673,6 +1693,7 @@ class AsyncTaskRepository:
         self,
         bot_key: str | None = None,
         status: str | None = None,
+        chat_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[AsyncAgentTask]:
@@ -1681,6 +1702,8 @@ class AsyncTaskRepository:
             stmt = stmt.where(AsyncAgentTask.bot_key == bot_key)
         if status:
             stmt = stmt.where(AsyncAgentTask.status == status)
+        if chat_id:
+            stmt = stmt.where(AsyncAgentTask.chat_id == chat_id)
         stmt = stmt.order_by(AsyncAgentTask.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

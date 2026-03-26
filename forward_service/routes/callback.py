@@ -4,6 +4,7 @@
 处理企微机器人回调。
 支持消息去重：企微在未及时收到 200 时会重试，同一消息可能被推送多次，通过去重避免重复转发和重复回复。
 """
+import asyncio
 import hashlib
 import logging
 import time
@@ -108,6 +109,7 @@ async def _handle_async_mode(
     mentioned_list: list | None,
     log_id: int | None,
     start_time: datetime,
+    correlation_id: str | None = None,
 ) -> dict:
     """async_mode=True：发处理中提示、落库异步任务并立即返回企微。"""
     db_manager = get_db_manager()
@@ -176,6 +178,7 @@ async def _handle_async_mode(
         image_urls=image_urls,
         processing_message=processing_msg,
         max_duration_seconds=max_dur,
+        correlation_id=correlation_id,
     )
 
     duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -876,18 +879,89 @@ async def handle_callback(
                     mentioned_list=mentioned_list,
                     log_id=log_id,
                     start_time=start_time,
+                    correlation_id=request_id,
                 )
 
-            # 转发到 Agent（优先使用用户项目配置，带上 session_id）
-            result = await forward_to_agent_with_user_project(
-                bot_key=bot.bot_key,
-                chat_id=chat_id,
-                content=forward_content,
-                timeout=config.timeout,
-                session_id=current_session_id,
-                current_project_id=current_project_id,
-                image_urls=image_urls if image_urls else None,
-            )
+            # 同步模式：在 sync_timeout_seconds 内等待 Agent，超时则降级为异步任务
+            sync_timeout = float(bot.sync_timeout_seconds or 30)
+            try:
+                result = await asyncio.wait_for(
+                    forward_to_agent_with_user_project(
+                        bot_key=bot.bot_key,
+                        chat_id=chat_id,
+                        content=forward_content,
+                        timeout=config.timeout,
+                        session_id=current_session_id,
+                        current_project_id=current_project_id,
+                        image_urls=image_urls if image_urls else None,
+                    ),
+                    timeout=sync_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "同步转发超时，降级异步: bot_key=%s chat_id=%s correlation_id=%s sync_timeout=%s",
+                    bot.bot_key[:12],
+                    chat_id[:24],
+                    request_id,
+                    sync_timeout,
+                )
+                try:
+                    forward_cfg = await get_forward_config_for_user(
+                        bot.bot_key, chat_id, current_project_id
+                    )
+                except ValueError as e:
+                    remove_pending_request(request_id)
+                    await send_reply(
+                        chat_id=chat_id,
+                        message=f"⚠️ {e}",
+                        msg_type="text",
+                        bot_key=bot.bot_key,
+                        mentioned_list=mentioned_list,
+                    )
+                    duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                    if log_id:
+                        await update_request_log(
+                            log_id=log_id,
+                            status="error",
+                            error=str(e),
+                            duration_ms=duration_ms,
+                        )
+                    return {"errcode": 0, "errmsg": "config_error"}
+
+                processing_msg = bot.processing_message or config.async_task_default_processing_msg
+                await send_reply(
+                    chat_id=chat_id,
+                    message=processing_msg,
+                    msg_type="text",
+                    bot_key=bot.bot_key,
+                    mentioned_list=mentioned_list,
+                )
+                max_dur = int(
+                    getattr(bot, "max_task_duration_seconds", config.async_task_default_timeout)
+                )
+                svc = get_async_task_service()
+                await svc.submit_task(
+                    bot_key=bot.bot_key,
+                    chat_id=chat_id,
+                    from_user_id=from_user_id,
+                    chat_type=chat_type,
+                    message=forward_content,
+                    session_id=current_session_id,
+                    forward_config=forward_cfg,
+                    mentioned_list=mentioned_list,
+                    image_urls=image_urls if image_urls else None,
+                    processing_message=processing_msg,
+                    max_duration_seconds=max_dur,
+                    correlation_id=request_id,
+                )
+                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                if log_id:
+                    await update_request_log(
+                        log_id=log_id,
+                        status="async_submitted",
+                        duration_ms=duration_ms,
+                    )
+                return {"errcode": 0, "errmsg": "ok"}
         except ValueError as e:
             # 捕获配置错误（forwarder 抛出的 ValueError）
             error_msg = str(e)

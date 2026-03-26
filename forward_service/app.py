@@ -31,7 +31,8 @@ from .session_manager import init_session_manager
 from .routes import (
     admin_router, bots_router, bots_api_router, callback_router, unified_callback_router,
     intelligent_router, slack_router, telegram_router, lark_router, tunnel_proxy_router,
-    qqbot_admin_router, weixin_admin_router, outbound_context_router, im_send_router
+    qqbot_admin_router, weixin_admin_router, outbound_context_router, im_send_router,
+    async_tasks_api_router,
 )
 from .routes import discord as discord_router
 from .tunnel import tunnel_server, init_tunnel_server, load_tunnel_config
@@ -167,6 +168,13 @@ async def lifespan(app: FastAPI):
 
         yield
 
+        try:
+            from .services.async_task_service import get_async_task_service
+
+            await get_async_task_service().shutdown(timeout=60.0)
+        except Exception as e:
+            logger.warning(f"  异步任务优雅关闭异常（继续退出）: {e}")
+
         # 关闭 Discord Bot
         for bot_key, client in discord_router.discord_bots.items():
             logger.info(f"  ⏹️  关闭 Discord Bot: {bot_key[:10]}...")
@@ -229,6 +237,7 @@ app.add_middleware(
 app.include_router(admin_router)
 app.include_router(bots_router)
 app.include_router(bots_api_router)              # 用户级接口，JWT 鉴权
+app.include_router(async_tasks_api_router)       # 异步任务管理，X-Admin-Key
 app.include_router(outbound_context_router)      # 出站消息上下文 API，JWT 鉴权
 app.include_router(im_send_router)               # 出站消息发送 API，JWT 鉴权
 app.include_router(callback_router)              # 旧的 /callback（向后兼容）

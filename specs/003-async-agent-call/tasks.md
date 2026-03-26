@@ -106,13 +106,13 @@ description: "Task list for 003-async-agent-call — Async Message Stream featur
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T024 [P] [US3] Unit tests for admin API in `tests/test_async_tasks_api.py`: test list endpoint with status/bot_key/limit/offset filters; test detail endpoint 200 and 404 cases; verify admin key auth is enforced
+- [X] T024 [P] [US3] Unit tests for admin API in `tests/test_async_tasks_api.py`: test list endpoint with status/bot_key/limit/offset filters; test detail endpoint 200 and 404 cases; verify admin key auth is enforced
 
 ### Implementation for US3
 
-- [ ] T025 [US3] Create `forward_service/routes/async_tasks_api.py` with `GET /api/admin/async-tasks` list endpoint: query params `status`, `bot_key`, `chat_id`, `limit` (max 100), `offset`; call `AsyncTaskRepository.list_for_admin()`; return list of `task.to_dict()`; require `verify_admin_key` dependency
-- [ ] T026 [US3] Add `GET /api/admin/async-tasks/{task_id}` detail endpoint in `forward_service/routes/async_tasks_api.py`: call `AsyncTaskRepository.get_by_task_id()`; return 404 if not found; return `task.to_dict()` with full `error_message` field for debugging
-- [ ] T027 [US3] Register `async_tasks_api.router` in `forward_service/app.py` with prefix `/api/admin/async-tasks`
+- [X] T025 [US3] Create `forward_service/routes/async_tasks_api.py` with `GET /api/admin/async-tasks` list endpoint: query params `status`, `bot_key`, `chat_id`, `limit` (max 100), `offset`; call `AsyncTaskRepository.list_for_admin()`; return list of `task.to_dict()`; require `verify_admin_key` dependency
+- [X] T026 [US3] Add `GET /api/admin/async-tasks/{task_id}` detail endpoint in `forward_service/routes/async_tasks_api.py`: call `AsyncTaskRepository.get_by_task_id()`; return 404 if not found; return `task.to_dict()` with full `error_message` field for debugging
+- [X] T027 [US3] Register `async_tasks_api.router` in `forward_service/app.py` with prefix `/api/admin/async-tasks`
 
 **Checkpoint**: All 3 user stories (US1+US2+US3) independently functional — operators can observe task lifecycle.
 
@@ -128,13 +128,13 @@ description: "Task list for 003-async-agent-call — Async Message Stream featur
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T028 [P] [US4] Integration test in `tests/test_async_callback.py`: test sync bot (async_mode=False) returns direct reply; test sync timeout fallback sends processing msg and submits async task; verify existing sync test cases still pass
+- [X] T028 [P] [US4] Integration test in `tests/test_async_callback.py`: test sync bot (async_mode=False) returns direct reply; test sync timeout fallback sends processing msg and submits async task; verify existing sync test cases still pass
 
 ### Implementation for US4
 
-- [ ] T029 [US4] Wrap sync agent call with `asyncio.wait_for(timeout=float(bot.sync_timeout_seconds))` in sync branch of `forward_service/routes/callback.py`; on `asyncio.TimeoutError` log fallback event, send `bot.processing_message or config.async_task_default_processing_msg`, call `async_task_service.submit_task()`, return `{"errcode": 0, "errmsg": "ok"}`
-- [ ] T030 [US4] Extend `BotCreateRequest` and `BotUpdateRequest` Pydantic schemas in `forward_service/routes/bots_api.py` with optional fields: `async_mode`, `processing_message`, `sync_timeout_seconds`, `max_task_duration_seconds`; add validation (sync_timeout 5–300s, max_task_duration 60–7200s)
-- [ ] T031 [US4] Include `async_config` nested object in Bot GET response in `forward_service/routes/bots_api.py`: `{"async_mode": bool, "processing_message": str|null, "sync_timeout_seconds": int, "max_task_duration_seconds": int}`
+- [X] T029 [US4] Wrap sync agent call with `asyncio.wait_for(timeout=float(bot.sync_timeout_seconds))` in sync branch of `forward_service/routes/callback.py`; on `asyncio.TimeoutError` log fallback event, send `bot.processing_message or config.async_task_default_processing_msg`, call `async_task_service.submit_task()`, return `{"errcode": 0, "errmsg": "ok"}`
+- [X] T030 [US4] Extend `BotCreateRequest` and `BotUpdateRequest` Pydantic schemas in `forward_service/routes/bots_api.py` with optional fields: `async_mode`, `processing_message`, `sync_timeout_seconds`, `max_task_duration_seconds`; add validation (sync_timeout 5–300s, max_task_duration 60–7200s)
+- [X] T031 [US4] Include `async_config` nested object in Bot GET response in `forward_service/routes/bots_api.py`: `{"async_mode": bool, "processing_message": str|null, "sync_timeout_seconds": int, "max_task_duration_seconds": int}`
 
 **Checkpoint**: All 4 user stories complete — existing bots unaffected, new async bots work end-to-end.
 
@@ -144,11 +144,11 @@ description: "Task list for 003-async-agent-call — Async Message Stream featur
 
 **Purpose**: Message splitting, observability, migration production readiness, end-to-end validation.
 
-- [ ] T032 Integrate `message_splitter.py` in `_deliver_result()` in `forward_service/services/async_task_service.py`: split `result.reply` into chunks respecting WeChat per-message limit; call `send_reply()` sequentially for each chunk; log chunk count
-- [ ] T033 [P] Add structured logging throughout `forward_service/services/async_task_service.py`: every state transition logs `task_id`, `bot_key`, `chat_id`, `elapsed_ms`, new status, error (if any). Capture the WeChat callback `request_id` (or generate a correlation ID at callback entry) and thread it through to AsyncTaskService as `correlation_id` field — use `logger.info` for success, `logger.warning` for retries, `logger.error` for failures with `exc_info=True` (addresses P8 requirement for end-to-end request tracing)
-- [ ] T034 Manual end-to-end validation of all Success Criteria: SC-001 (curl timing <3s), SC-003 (WeChat processing msg <5s), SC-005 (restart recovery), SC-006 (sync bot unchanged)
-- [ ] T035 [P] Generate production SQL preview: `alembic upgrade head --sql > specs/003-async-agent-call/migration_003_preview.sql` — review for MySQL 8 compatibility (column types, DEFAULT encoding for Chinese text, index names)
-- [ ] T036 Implement graceful shutdown in `forward_service/app.py` lifespan: on shutdown, signal `async_task_service` to stop accepting new tasks, then `await asyncio.wait([t for t in active_tasks], timeout=60)` to allow in-flight tasks to complete before process exit; log number of tasks that did not complete within timeout (addresses F-006 / SC-005 second half — complements T023 startup recovery)
+- [X] T032 Integrate `message_splitter.py` in `_deliver_result()` in `forward_service/services/async_task_service.py`: split `result.reply` into chunks respecting WeChat per-message limit; call `send_reply()` sequentially for each chunk; log chunk count
+- [X] T033 [P] Add structured logging throughout `forward_service/services/async_task_service.py`: every state transition logs `task_id`, `bot_key`, `chat_id`, `elapsed_ms`, new status, error (if any). Capture the WeChat callback `request_id` (or generate a correlation ID at callback entry) and thread it through to AsyncTaskService as `correlation_id` field — use `logger.info` for success, `logger.warning` for retries, `logger.error` for failures with `exc_info=True` (addresses P8 requirement for end-to-end request tracing)
+- [ ] T034 Manual end-to-end validation of all Success Criteria: SC-001 (curl timing <3s), SC-003 (WeChat processing msg <5s), SC-005 (restart recovery), SC-006 (sync bot unchanged) — **跳过**：由 ArgusAI 手工/E2E 验证
+- [X] T035 [P] Generate production SQL preview: `alembic upgrade head --sql > specs/003-async-agent-call/migration_003_preview.sql` — review for MySQL 8 compatibility (column types, DEFAULT encoding for Chinese text, index names)
+- [X] T036 Implement graceful shutdown in `forward_service/app.py` lifespan: on shutdown, signal `async_task_service` to stop accepting new tasks, then `await asyncio.wait([t for t in active_tasks], timeout=60)` to allow in-flight tasks to complete before process exit; log number of tasks that did not complete within timeout (addresses F-006 / SC-005 second half — complements T023 startup recovery)
 
 ---
 

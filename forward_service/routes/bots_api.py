@@ -8,15 +8,63 @@ Bot 管理 API（用户级接口）
 - /api/bots:   JWT Bearer Token 鉴权（用户工具调用）
 """
 import logging
+from typing import Any, Optional
+
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import require_enterprise_jwt
-from ..config import config
+from ..config import DEFAULT_TIMEOUT, config
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/bots", tags=["bots-api"])
+
+
+class BotAsyncFields(BaseModel):
+    """异步模式相关字段（创建/更新共用校验）"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    async_mode: Optional[bool] = None
+    processing_message: Optional[str] = Field(None, max_length=500)
+    sync_timeout_seconds: Optional[int] = Field(None, ge=5, le=300)
+    max_task_duration_seconds: Optional[int] = Field(None, ge=60, le=7200)
+
+
+class BotCreateRequest(BotAsyncFields):
+    model_config = ConfigDict(extra="ignore")
+
+    bot_key: str
+    name: str
+    target_url: str = ""
+    url_template: str = ""
+    description: str = ""
+    api_key: str = ""
+    timeout: int = DEFAULT_TIMEOUT
+    enabled: bool = True
+    owner_id: Optional[str] = None
+    access_mode: str = "allow_all"
+    platform: str = "wecom"
+    whitelist: list[str] = Field(default_factory=list)
+    blacklist: list[str] = Field(default_factory=list)
+    platform_config: Optional[dict[str, Any]] = None
+
+
+class BotUpdateRequest(BotAsyncFields):
+    model_config = ConfigDict(extra="ignore")
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    target_url: Optional[str] = None
+    url_template: Optional[str] = None
+    api_key: Optional[str] = None
+    timeout: Optional[int] = None
+    enabled: Optional[bool] = None
+    access_mode: Optional[str] = None
+    platform_config: Optional[dict[str, Any]] = None
+    whitelist: Optional[list[str]] = None
+    blacklist: Optional[list[str]] = None
 
 
 @router.get("")
@@ -51,7 +99,9 @@ async def create_bot(request: Request, _user=Depends(require_enterprise_jwt)) ->
         owner_id: str    创建者标识
     """
     try:
-        data = await request.json()
+        raw = await request.json()
+        req = BotCreateRequest.model_validate(raw)
+        data = req.model_dump(exclude_unset=True)
         result = await config.create_bot(data)
         return result
     except Exception as e:
@@ -63,7 +113,9 @@ async def create_bot(request: Request, _user=Depends(require_enterprise_jwt)) ->
 async def update_bot(bot_key: str, request: Request, _user=Depends(require_enterprise_jwt)) -> dict:
     """更新 Bot 配置"""
     try:
-        data = await request.json()
+        raw = await request.json()
+        req = BotUpdateRequest.model_validate(raw)
+        data = req.model_dump(exclude_unset=True)
         result = await config.update_bot(bot_key, data)
         return result
     except Exception as e:

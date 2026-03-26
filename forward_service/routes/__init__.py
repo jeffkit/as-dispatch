@@ -17,6 +17,7 @@ from .lark import router as lark_router
 from .tunnel_proxy import router as tunnel_proxy_router
 from .qqbot import router as qqbot_admin_router
 from .weixin import router as weixin_admin_router
+from .async_tasks_api import router as async_tasks_api_router
 
 __all__ = [
     "admin_router",
@@ -33,4 +34,5 @@ __all__ = [
     "tunnel_proxy_router",
     "qqbot_admin_router",
     "weixin_admin_router",
+    "async_tasks_api_router",
 ]
