@@ -27,7 +27,7 @@ from .repository import get_chatbot_repository, get_access_rule_repository
 logger = logging.getLogger(__name__)
 
 # 默认超时时间（秒）- 用户项目和 Bot 共用
-DEFAULT_TIMEOUT = 300  # 5 分钟
+DEFAULT_TIMEOUT = 1800  # 30 分钟
 
 
 # ============== 数据类定义 (与 config_v2 兼容) ==============

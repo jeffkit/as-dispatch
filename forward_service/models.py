@@ -116,7 +116,7 @@ class Chatbot(Base):
     timeout: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        default=60,
+        default=1800,
         comment="转发请求超时时间 (秒)"
     )
 
@@ -382,7 +382,7 @@ class UserProjectConfig(Base):
     timeout: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        default=60,
+        default=1800,
         comment="转发请求超时时间 (秒)"
     )
 
