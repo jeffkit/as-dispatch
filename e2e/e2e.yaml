@@ -1,37 +1,81 @@
 version: "1"
 
 project:
-  name: as-dispatch-async
-  description: "as-dispatch 异步消息流 E2E 测试"
+  name: as-dispatch-async-e2e
+  description: "as-dispatch 异步消息流完整 E2E 测试（Docker 环境）"
   version: "1.0.0"
 
-# 纯测试模式 — as-dispatch 已在外部启动（localhost:18083）
-# 变量在各测试文件的 variables 节中直接定义
+service:
+  build:
+    dockerfile: e2e/Dockerfile.e2e
+    context: .
+    image: as-dispatch-e2e:latest
+  container:
+    name: as-dispatch-e2e
+    ports:
+      - "18083:8083"
+    environment:
+      AS_ADMIN_KEY: "e2e-test-key"
+      DATABASE_URL: "sqlite+aiosqlite:////app/data/e2e_test.db"
+      # Mock agent 在宿主机通过 host.docker.internal 可达
+      LOG_LEVEL: "WARNING"
+    healthcheck:
+      path: /
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      startPeriod: 30s
+  vars:
+    base_url: "http://localhost:18083"
+    admin_key: "e2e-test-key"
+    # Mock 服务地址（容器内通过 host.docker.internal 访问）
+    agent_url_inside: "http://host.docker.internal:19090"
+    webhook_receiver: "http://host.docker.internal:19091"
 
 mocks:
-  # Mock Agent 服务：模拟 AgentStudio A2A 端点
+  # Mock Agent — 模拟 AgentStudio A2A 端点
   agent-server:
     port: 19090
+    containerPort: 19090
     routes:
+      # 快速响应 Agent
       - method: POST
-        path: /api/a2a/test-agent/messages
+        path: /v1/agent/fast
         response:
           status: 200
-          headers:
-            Content-Type: text/event-stream
-          body: "data: {\"type\":\"message\",\"role\":\"assistant\",\"content\":\"Hello from mock agent!\"}\n\ndata: {\"type\":\"message_stop\"}\n\n"
-      - method: POST
-        path: /api/a2a/slow-agent/messages
-        delay: 5000
-        response:
-          status: 200
-          headers:
-            Content-Type: text/event-stream
-          body: "data: {\"type\":\"message\",\"role\":\"assistant\",\"content\":\"Slow response\"}\n\ndata: {\"type\":\"message_stop\"}\n\n"
+          body:
+            response: "你好！这是来自 Mock Agent 的快速响应。"
+            session_id: "mock-session-001"
 
-  # Mock Webhook Receiver：模拟企微机器人 webhook 接收器（接收 as-dispatch 回复）
+      # 慢速 Agent（用于测试超时降级）
+      - method: POST
+        path: /v1/agent/slow
+        delay: 8000
+        response:
+          status: 200
+          body:
+            response: "这是慢速响应（8秒后返回）"
+
+      # 长消息 Agent（测试消息分割）
+      - method: POST
+        path: /v1/agent/long
+        response:
+          status: 200
+          body:
+            response: "这是一段超长的测试内容，用于验证消息自动分割功能。在企业微信中，每条消息有长度限制，当响应内容超过限制时，系统应当自动将其拆分成多条消息发送。这段内容会被重复多次以达到测试目的：ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+      # 错误响应 Agent
+      - method: POST
+        path: /v1/agent/error
+        response:
+          status: 503
+          body:
+            error: "Agent service unavailable"
+
+  # Mock Webhook Receiver — 模拟企微接收 as-dispatch 回复
   webhook-receiver:
     port: 19091
+    containerPort: 19091
     routes:
       - method: POST
         path: /webhook/reply
@@ -40,29 +84,54 @@ mocks:
           body:
             errcode: 0
             errmsg: ok
+      - method: GET
+        path: /chatinfo
+        response:
+          status: 200
+          body:
+            chat_info:
+              chat_id: "e2e-test-chat"
+              name: "E2E 测试群"
+              owner: "test-user"
 
 tests:
   suites:
-    - name: 服务健康检查
+    - name: 1. 服务健康检查
       id: health
       file: tests/health.yaml
 
-    - name: 管理 API 鉴权
+    - name: 2. 管理 API 鉴权
       id: admin-auth
       file: tests/admin-auth.yaml
 
-    - name: Bot 配置 API（异步字段）
-      id: bot-config
-      file: tests/bot-config.yaml
+    - name: 3. Bot CRUD 完整操作
+      id: bot-crud
+      file: tests/bot-crud.yaml
 
-    - name: 异步任务 API
-      id: async-tasks
-      file: tests/async-tasks.yaml
+    - name: 4. Bot 异步字段配置
+      id: bot-async-config
+      file: tests/bot-async-config.yaml
 
-    - name: 异步模式快速 ACK
+    - name: 5. 异步任务 API
+      id: async-tasks-api
+      file: tests/async-tasks-api.yaml
+
+    - name: 6. SC-001 异步模式快速 ACK
       id: async-ack
       file: tests/async-ack.yaml
 
-    - name: 向后兼容验证
+    - name: 7. SC-003/004 异步任务生命周期
+      id: async-lifecycle
+      file: tests/async-lifecycle.yaml
+
+    - name: 8. SC-006 同步模式向后兼容
       id: backward-compat
       file: tests/backward-compat.yaml
+
+    - name: 9. 错误处理与边界情况
+      id: error-handling
+      file: tests/error-handling.yaml
+
+    - name: 10. 消息分割功能
+      id: message-splitting
+      file: tests/message-splitting.yaml

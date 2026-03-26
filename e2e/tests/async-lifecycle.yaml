@@ -1,0 +1,120 @@
+name: "SC-003/004 异步任务生命周期测试"
+description: "验证异步任务从提交到结束的完整生命周期"
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+sequential: true
+
+setup:
+  - name: "清理已有 Bot"
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-lifecycle-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+  - name: "创建异步 Bot（Mock Agent 快速端点）"
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-lifecycle-bot"
+        name: "E2E 生命周期测试机器人"
+        target_url: "http://host.docker.internal:19090/v1/agent/fast"
+        async_mode: true
+        processing_message: "处理中..."
+        max_task_duration_seconds: 60
+    expect:
+      status: 200
+
+  - name: "发送回调触发异步任务"
+    request:
+      method: POST
+      url: "{{baseUrl}}/callback"
+      headers:
+        Content-Type: application/json
+      body:
+        chatid: "e2e-lifecycle-chat"
+        chattype: "group"
+        msgtype: "text"
+        msgid: "e2e-lifecycle-msg-001"
+        from:
+          userid: "lifecycle-user"
+          name: "生命周期测试用户"
+          alias: "lcuser"
+        webhook_url: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e2e-lifecycle-bot"
+        get_chat_info_url: "http://host.docker.internal:19091/chatinfo"
+        text:
+          content: "请处理这条测试消息"
+      timeout: "5s"
+    expect:
+      status: 200
+      body:
+        errcode: 0
+
+cases:
+  - name: "SC-004: 任务被创建并可查询"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-lifecycle-bot&limit=10"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+        tasks: { exists: true }
+
+  - name: "SC-003: 稍后任务进入处理状态"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-lifecycle-bot&limit=5"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+      timeout: "10s"
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: "任务 task_id 字段存在"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-lifecycle-bot&limit=1"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        tasks: { exists: true }
+    save:
+      firstTaskId: "tasks.0.task_id"
+
+  - name: "通过 task_id 查询单个任务详情"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks/{{firstTaskId}}"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        task:
+          task_id: { exists: true }
+          bot_key: "e2e-lifecycle-bot"
+          status: { exists: true }
+
+teardown:
+  - name: "删除测试 Bot"
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-lifecycle-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true

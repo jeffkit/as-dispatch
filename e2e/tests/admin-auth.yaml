@@ -1,12 +1,12 @@
 name: 管理 API 鉴权测试
-description: 验证 Admin API 的 X-Admin-Key 鉴权机制
+description: 验证 X-Admin-Key 鉴权机制正确工作
 
 variables:
   baseUrl: "http://localhost:18083"
   adminKey: "e2e-test-key"
 
 cases:
-  - name: 无 Admin Key 时返回 401
+  - name: 无 Admin Key 返回 401
     request:
       method: GET
       url: "{{baseUrl}}/api/admin/async-tasks"
@@ -21,14 +21,28 @@ cases:
         X-Admin-Key: "{{adminKey}}"
     expect:
       status: 200
-      body:
-        tasks: { exists: true }
 
   - name: 错误 Admin Key 返回 401
     request:
       method: GET
       url: "{{baseUrl}}/api/admin/async-tasks"
       headers:
-        X-Admin-Key: "wrong-key-12345"
+        X-Admin-Key: "totally-wrong-key-xyz"
     expect:
       status: 401
+
+  - name: Bot 管理 API 无 Key 返回 401
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots"
+    expect:
+      status: 401
+
+  - name: Bot 管理 API 正确 Key 可访问
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200

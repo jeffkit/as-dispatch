@@ -1,0 +1,92 @@
+name: 错误处理与边界情况测试
+description: 验证无效请求、边界情况和错误处理逻辑
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+cases:
+  - name: 创建 Bot 缺少必填字段 bot_key 返回 success false
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        name: "缺少 bot_key 的机器人"
+        target_url: "http://example.com/agent"
+    expect:
+      status: 200
+      body:
+        success: false
+        error: { exists: true }
+
+  - name: 创建 Bot 缺少必填字段 name 返回 success false
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-no-name-bot"
+    expect:
+      status: 200
+      body:
+        success: false
+        error: { exists: true }
+
+  - name: 查询不存在的 Bot 返回 success false
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/bot-that-does-not-exist-xyz"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: false
+
+  - name: 删除不存在的 Bot 返回 success false
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/bot-that-does-not-exist-xyz"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: false
+
+  - name: 异步任务 API 查询不存在的 task_id
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks/task-does-not-exist-xyz-abc-123"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 404
+
+  - name: 回调接口无 Bot 配置时返回无错误
+    request:
+      method: POST
+      url: "{{baseUrl}}/callback"
+      headers:
+        Content-Type: application/json
+      body:
+        chatid: "test-chat"
+        chattype: "group"
+        msgtype: "text"
+        msgid: "err-test-001"
+        from:
+          userid: "user1"
+          name: "用户"
+          alias: "u1"
+        webhook_url: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=nonexistent-bot-xyz"
+        text:
+          content: "测试消息"
+    expect:
+      status: 200
+      body:
+        errcode: 0

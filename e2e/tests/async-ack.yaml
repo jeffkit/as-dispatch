@@ -1,23 +1,22 @@
-name: 异步模式快速 ACK 测试
-description: "验证 SC-001: 企微回调在 3 秒内得到确认（async_mode=True）"
+name: SC-001 异步模式快速 ACK 测试
+description: "验证 async_mode=True 时，企微回调在 3 秒内得到确认"
 
 variables:
   baseUrl: "http://localhost:18083"
   adminKey: "e2e-test-key"
-  botKey: "e2e-ack-test-bot"
 
 sequential: true
 
 setup:
-  - name: 清理已有 Bot（忽略错误）
+  - name: 清理已有 Bot
     request:
       method: DELETE
-      url: "{{baseUrl}}/admin/bots/{{botKey}}"
+      url: "{{baseUrl}}/admin/bots/e2e-ack-bot"
       headers:
         X-Admin-Key: "{{adminKey}}"
     ignoreError: true
 
-  - name: 创建异步测试 Bot
+  - name: 创建异步测试 Bot（指向 Mock Agent）
     request:
       method: POST
       url: "{{baseUrl}}/admin/bots"
@@ -25,11 +24,12 @@ setup:
         X-Admin-Key: "{{adminKey}}"
         Content-Type: application/json
       body:
-        bot_key: "e2e-ack-test-bot"
+        bot_key: "e2e-ack-bot"
         name: "E2E ACK 测试机器人"
-        target_url: "http://localhost:19090/api/a2a/test-agent/messages"
+        target_url: "http://host.docker.internal:19090/v1/agent/fast"
         async_mode: true
-        processing_message: "正在处理中，请稍候..."
+        processing_message: "您的请求已收到，正在处理中..."
+        sync_timeout_seconds: 30
         max_task_duration_seconds: 60
     expect:
       status: 200
@@ -37,25 +37,25 @@ setup:
         success: true
 
 cases:
-  - name: "SC-001: 异步模式回调在 3 秒内返回 ACK"
+  - name: "SC-001: 异步模式回调响应时间 < 3000ms"
     request:
       method: POST
       url: "{{baseUrl}}/callback"
       headers:
         Content-Type: application/json
       body:
-        chatid: "e2e-test-chat-001"
+        chatid: "e2e-ack-chat-001"
         chattype: "group"
         msgtype: "text"
-        msgid: "e2e-msg-ack-001"
+        msgid: "e2e-ack-msg-001"
         from:
           userid: "test-user-001"
-          name: "测试用户"
-          alias: "testuser"
-        webhook_url: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e2e-ack-test-bot"
-        get_chat_info_url: "http://localhost:19091/chatinfo"
+          name: "E2E 测试用户"
+          alias: "e2euser"
+        webhook_url: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e2e-ack-bot"
+        get_chat_info_url: "http://host.docker.internal:19091/chatinfo"
         text:
-          content: "你好，这是 E2E 测试消息"
+          content: "你好，请帮我做一些测试"
       timeout: "5s"
     expect:
       status: 200
@@ -64,13 +64,39 @@ cases:
       body:
         errcode: 0
 
-  - name: "SC-001: 验证任务已提交到 DB（async_mode=True 时）"
+  - name: "SC-001: 第二条消息也在 3 秒内 ACK"
+    request:
+      method: POST
+      url: "{{baseUrl}}/callback"
+      headers:
+        Content-Type: application/json
+      body:
+        chatid: "e2e-ack-chat-002"
+        chattype: "single"
+        msgtype: "text"
+        msgid: "e2e-ack-msg-002"
+        from:
+          userid: "test-user-002"
+          name: "E2E 测试用户2"
+          alias: "e2euser2"
+        webhook_url: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e2e-ack-bot"
+        get_chat_info_url: "http://host.docker.internal:19091/chatinfo"
+        text:
+          content: "第二条测试消息"
+      timeout: "5s"
+    expect:
+      status: 200
+      responseTime:
+        lt: 3000
+      body:
+        errcode: 0
+
+  - name: "SC-004: 验证任务已写入 DB"
     request:
       method: GET
-      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-ack-test-bot&limit=5"
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-ack-bot"
       headers:
         X-Admin-Key: "{{adminKey}}"
-      timeout: "5s"
     expect:
       status: 200
       body:
@@ -81,7 +107,7 @@ teardown:
   - name: 删除测试 Bot
     request:
       method: DELETE
-      url: "{{baseUrl}}/admin/bots/{{botKey}}"
+      url: "{{baseUrl}}/admin/bots/e2e-ack-bot"
       headers:
         X-Admin-Key: "{{adminKey}}"
     ignoreError: true

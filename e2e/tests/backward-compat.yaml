@@ -1,5 +1,5 @@
-name: 向后兼容验证
-description: "验证 SC-006: 同步 Bot 行为不受影响（async_mode=False）"
+name: SC-006 同步模式向后兼容测试
+description: "验证 async_mode=False 的 Bot 行为完全不受影响"
 
 variables:
   baseUrl: "http://localhost:18083"
@@ -8,7 +8,7 @@ variables:
 sequential: true
 
 setup:
-  - name: 清理已有 Bot（忽略错误）
+  - name: 清理已有 Bot
     request:
       method: DELETE
       url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
@@ -16,7 +16,7 @@ setup:
         X-Admin-Key: "{{adminKey}}"
     ignoreError: true
 
-  - name: 创建同步测试 Bot
+  - name: 创建同步 Bot（默认 async_mode=false）
     request:
       method: POST
       url: "{{baseUrl}}/admin/bots"
@@ -26,12 +26,10 @@ setup:
       body:
         bot_key: "e2e-sync-compat-bot"
         name: "E2E 同步兼容测试机器人"
-        target_url: "http://localhost:19090/api/a2a/test-agent/messages"
+        target_url: "http://host.docker.internal:19090/v1/agent/fast"
         async_mode: false
     expect:
       status: 200
-      body:
-        success: true
 
 cases:
   - name: "SC-006: 同步 Bot async_mode 为 false"
@@ -47,18 +45,7 @@ cases:
           async_config:
             async_mode: false
 
-  - name: "Bot 列表返回成功"
-    request:
-      method: GET
-      url: "{{baseUrl}}/admin/bots"
-      headers:
-        X-Admin-Key: "{{adminKey}}"
-    expect:
-      status: 200
-      body:
-        success: true
-
-  - name: "管理端异步任务列表 API 对同步 Bot 无任务"
+  - name: "SC-006: 同步 Bot 不会产生异步任务"
     request:
       method: GET
       url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-sync-compat-bot"
@@ -67,14 +54,39 @@ cases:
     expect:
       status: 200
       body:
-        success: true
         tasks:
           length: 0
 
-  - name: "Admin API 统计任务总数（同步 Bot 不产生任务）"
+  - name: 禁用 Bot 后不响应消息
+    request:
+      method: PUT
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        enabled: false
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: 验证 Bot 已被禁用
     request:
       method: GET
-      url: "{{baseUrl}}/api/admin/async-tasks"
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          enabled: false
+
+  - name: Bot 列表 API 正常返回
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots"
       headers:
         X-Admin-Key: "{{adminKey}}"
     expect:

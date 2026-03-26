@@ -1,11 +1,17 @@
 name: 服务健康检查
-description: 验证 as-dispatch 服务正常运行
+description: 验证 as-dispatch 服务正常启动并响应
 
 variables:
   baseUrl: "http://localhost:18083"
 
+setup:
+  - waitForPort:
+      host: localhost
+      port: 18083
+      timeout: "60s"
+
 cases:
-  - name: 根路径健康检查
+  - name: 根路径返回服务信息
     request:
       method: GET
       url: "{{baseUrl}}/"
@@ -15,12 +21,19 @@ cases:
         service: "Forward Service"
         status: "running"
 
-  - name: 响应时间检查
+  - name: 响应时间在 3 秒以内
     request:
       method: GET
       url: "{{baseUrl}}/"
-      timeout: "3s"
+      timeout: "5s"
     expect:
       status: 200
       responseTime:
         lt: 3000
+
+  - name: 错误路径返回 404
+    request:
+      method: GET
+      url: "{{baseUrl}}/nonexistent-path-xyz"
+    expect:
+      status: 404
