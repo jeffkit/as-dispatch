@@ -116,7 +116,7 @@ async def _forward_to_tunnel(
                 path=path,
                 headers=headers,
                 body=body,
-                timeout=300.0,
+                timeout=1800.0,
             )
             
             logger.debug(f"[TunnelProxy] Forward response: status={response.status}, body_type={type(response.body).__name__}, body_len={len(response.body) if response.body else 0}, error={response.error}")
@@ -187,7 +187,7 @@ async def _stream_tunnel_response(
             path=path,
             headers=headers,
             body=body,
-            timeout=300.0,
+            timeout=1800.0,
         ):
             if isinstance(msg, StreamStartMessage):
                 yield f"event: start\ndata: {{}}\n\n"
