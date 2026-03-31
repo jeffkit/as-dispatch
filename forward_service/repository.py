@@ -1504,7 +1504,8 @@ class OutboundMessageContextRepository:
         """
         根据企微消息 ID 查找出站上下文
 
-        只返回未过期且状态为 pending 的记录。
+        返回未过期且状态为 pending 或 replied 的记录，
+        以便同一条出站消息可被多次引用回复路由到同一会话。
 
         Args:
             message_id: 企微消息 ID
@@ -1514,7 +1515,7 @@ class OutboundMessageContextRepository:
         """
         stmt = select(OutboundMessageContext).where(
             OutboundMessageContext.message_id == message_id,
-            OutboundMessageContext.status == "pending",
+            OutboundMessageContext.status.in_(["pending", "replied"]),
             OutboundMessageContext.expires_at > datetime.now(timezone.utc),
         )
         result = await self.session.execute(stmt)
