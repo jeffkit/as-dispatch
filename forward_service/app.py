@@ -396,12 +396,22 @@ async def health() -> dict:
 async def api_info() -> dict:
     """服务信息 - 供隧道客户端查询服务端能力"""
     tunnel_cfg = load_tunnel_config()
+    base_domain = tunnel_cfg.get("domain", "tunnel")
+    ws_url = tunnel_cfg.get("ws_url", "")
+    instruction = tunnel_cfg.get("instruction", "输入隧道名称（只允许字母、数字和连字符），创建后可通过 {name}.tunnel 访问你的本地服务。")
     return {
-        "service": "Forward Service",
+        "name": "AgentStudio Tunnel Server",
         "version": "3.0.0",
-        "domain": tunnel_cfg.get("domain", ""),
-        "websocket_path": "/ws/tunnel",
-        "protocols": ["tunely-1.1"],
+        "domain": {
+            "pattern": f"{{subdomain}}.{base_domain}",
+            "customizable": "subdomain",
+            "suffix": f".{base_domain}",
+        },
+        "websocket": {
+            "url": ws_url,
+        },
+        "protocols": ["https", "http"],
+        "instruction": instruction,
     }
 
 
