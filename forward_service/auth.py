@@ -58,22 +58,27 @@ async def require_admin_key(
 # Enterprise JWT 鉴权（/api/* 路由）
 # ============================================================
 
-_JWT_SECRET: str = os.getenv("JWT_SECRET_KEY", "")
+_JWT_SECRETS: list[str] = [
+    s for s in [
+        os.getenv("AS_ENTERPRISE_JWT_SECRET", ""),
+        os.getenv("JWT_SECRET_KEY", ""),
+    ] if s
+]
 
-if _JWT_SECRET:
-    logger.info("Enterprise JWT 鉴权已启用（JWT_SECRET_KEY 已配置）")
+if _JWT_SECRETS:
+    logger.info("Enterprise JWT auth enabled (%d keys)", len(_JWT_SECRETS))
 else:
-    logger.warning("JWT_SECRET_KEY 未配置，/api/* 端点跳过 JWT 鉴权（内网模式）")
+    logger.warning("No JWT keys configured, skipping auth")
 
 
 async def require_enterprise_jwt(request: Request) -> dict:
     """
-    FastAPI Depends：校验 Authorization: Bearer <enterprise_token>。
+    FastAPI Depends: Bearer JWT auth with multi-key fallback.
 
-    - 未配置 JWT_SECRET_KEY 时 → 跳过鉴权，返回空 payload（内网模式）
-    - 校验失败 → 401 Unauthorized
+    Tries AS_ENTERPRISE_JWT_SECRET first, then JWT_SECRET_KEY.
+    Skips auth when neither is configured.
     """
-    if not _JWT_SECRET:
+    if not _JWT_SECRETS:
         return {}
 
     auth = request.headers.get("Authorization", "")
@@ -84,13 +89,15 @@ async def require_enterprise_jwt(request: Request) -> dict:
         )
 
     token = auth[7:]
-    try:
-        import jwt as pyjwt
-        payload = pyjwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
-        return payload
-    except Exception as exc:
-        logger.warning("JWT 验证失败: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Token 无效或已过期，请重新登录 as-enterprise ({exc})",
-        )
+    import jwt as pyjwt
+    last_exc: Exception | None = None
+    for secret in _JWT_SECRETS:
+        try:
+            return pyjwt.decode(token, secret, algorithms=["HS256"])
+        except Exception as exc:
+            last_exc = exc
+    logger.warning("JWT verify failed (tried %d keys): %s", len(_JWT_SECRETS), last_exc)
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=f"Token 无效或已过期，请重新登录 as-enterprise ({last_exc})",
+    )

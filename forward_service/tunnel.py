@@ -63,8 +63,6 @@ def load_tunnel_config() -> dict:
         config["jwt_secret"] = jwt_secret
     if instruction := os.getenv("WS_TUNNEL_INSTRUCTION"):
         config["instruction"] = instruction
-    if jwt_secret := os.getenv("JWT_SECRET_KEY"):
-        config["jwt_secret"] = jwt_secret
     if proxy_base_url := os.getenv("TUNNEL_PROXY_BASE_URL"):
         config["proxy_base_url"] = proxy_base_url
     
