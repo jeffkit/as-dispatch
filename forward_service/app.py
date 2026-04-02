@@ -392,19 +392,6 @@ async def health() -> dict:
     }
 
 
-@app.get("/api/info")
-async def api_info() -> dict:
-    """服务信息 - 供隧道客户端查询服务端能力"""
-    tunnel_cfg = load_tunnel_config()
-    return {
-        "service": "Forward Service",
-        "version": "3.0.0",
-        "domain": tunnel_cfg.get("domain", ""),
-        "websocket_path": "/ws/tunnel",
-        "protocols": ["tunely-1.1"],
-    }
-
-
 # ============== 子域名模式路由（通用 catch-all） ==============
 
 @app.api_route(
