@@ -47,6 +47,10 @@ class AsyncTaskService:
         self._execute_tasks: set[asyncio.Task] = set()
         self._correlation_by_task: dict[str, str] = {}
 
+    def _schedule_execute_task(self, task_id: str) -> None:
+        """Schedule task execution in background."""
+        asyncio.create_task(self.execute_task(task_id))
+
     def _log(
         self,
         level: int,
@@ -167,7 +171,7 @@ class AsyncTaskService:
             )
             return task_id
 
-        asyncio.create_task(self.execute_task(task_id))
+        self._schedule_execute_task(task_id)
         return task_id
 
     async def get_task_status(self, task_id: str) -> AsyncTaskStatus | None:
@@ -516,7 +520,7 @@ class AsyncTaskService:
                 await repo.update_status(task.task_id, "PENDING", started_at=None)
                 await session.commit()
             if not self._shutting_down:
-                asyncio.create_task(self.execute_task(task.task_id))
+                self._schedule_execute_task(task.task_id)
             recovered += 1
         logger.info(
             "异步任务恢复完成: 重新调度=%s 超时关闭=%s",

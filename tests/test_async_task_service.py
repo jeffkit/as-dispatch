@@ -1,8 +1,9 @@
 """
 异步任务服务单元测试（US1 / US2）
 """
+import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -22,11 +23,9 @@ async def test_submit_task_persists_pending(mock_db_manager):
     """T011: submit_task 落库 PENDING 并返回 task_id，不依赖 execute 完成。"""
     _reset_async_service_singleton()
 
-    with patch("forward_service.services.async_task_service.asyncio.create_task") as ct:
-        ct.return_value = MagicMock()
+    from forward_service.services.async_task_service import AsyncTaskService
 
-        from forward_service.services.async_task_service import AsyncTaskService
-
+    with patch.object(AsyncTaskService, "_schedule_execute_task") as schedule:
         svc = AsyncTaskService()
         tid = await svc.submit_task(
             bot_key="test-bot-key",
@@ -58,7 +57,7 @@ async def test_submit_task_persists_pending(mock_db_manager):
         assert row.status == "PENDING"
         assert row.message == "hello"
 
-    assert ct.called
+    schedule.assert_called_once_with(tid)
 
 
 @pytest.mark.asyncio
@@ -66,9 +65,9 @@ async def test_execute_task_state_machine(mock_db_manager):
     """T016: execute_task PENDING→PROCESSING→COMPLETED，并调用 send_reply。"""
     _reset_async_service_singleton()
 
-    with patch("forward_service.services.async_task_service.asyncio.create_task"):
-        from forward_service.services.async_task_service import AsyncTaskService
+    from forward_service.services.async_task_service import AsyncTaskService
 
+    with patch.object(AsyncTaskService, "_schedule_execute_task"):
         svc = AsyncTaskService()
         tid = await svc.submit_task(
             bot_key="bk",
@@ -127,9 +126,9 @@ async def test_deliver_result_retry_then_success(mock_db_manager):
     """T017: send_reply 失败两次后成功 → COMPLETED 且 retry_count==2。"""
     _reset_async_service_singleton()
 
-    with patch("forward_service.services.async_task_service.asyncio.create_task"):
-        from forward_service.services.async_task_service import AsyncTaskService
+    from forward_service.services.async_task_service import AsyncTaskService
 
+    with patch.object(AsyncTaskService, "_schedule_execute_task"):
         svc = AsyncTaskService()
         tid = await svc.submit_task(
             bot_key="bk",
@@ -180,9 +179,9 @@ async def test_deliver_result_all_retries_fail(mock_db_manager):
     """T017: 投递全部失败 → FAILED。"""
     _reset_async_service_singleton()
 
-    with patch("forward_service.services.async_task_service.asyncio.create_task"):
-        from forward_service.services.async_task_service import AsyncTaskService
+    from forward_service.services.async_task_service import AsyncTaskService
 
+    with patch.object(AsyncTaskService, "_schedule_execute_task"):
         svc = AsyncTaskService()
         tid = await svc.submit_task(
             bot_key="bk",
@@ -244,13 +243,13 @@ async def test_recover_resets_processing_to_pending_before_execute(mock_db_manag
         await repo.create(t)
         await session.commit()
 
-    scheduled = []
-
     from forward_service.services.async_task_service import AsyncTaskService
 
     svc = AsyncTaskService()
+    called = {"task_id": None}
 
     async def bound_execute(task_id: str):
+        called["task_id"] = task_id
         async with mock_db_manager.get_session() as session:
             r = get_async_task_repository(session)
             row = await r.get_by_task_id(task_id)
@@ -259,15 +258,8 @@ async def test_recover_resets_processing_to_pending_before_execute(mock_db_manag
 
     svc.execute_task = bound_execute
 
-    def capture(coro):
-        scheduled.append(coro)
-        return MagicMock()
-
-    with patch(
-        "forward_service.services.async_task_service.asyncio.create_task",
-        side_effect=capture,
-    ):
+    with patch.object(AsyncTaskService, "_schedule_execute_task", lambda self, task_id: asyncio.create_task(self.execute_task(task_id))):
         await svc.recover_pending_tasks()
 
-    assert len(scheduled) == 1
-    await scheduled[0]
+    await asyncio.sleep(0)
+    assert called["task_id"] == "recover1"

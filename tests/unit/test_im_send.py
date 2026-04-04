@@ -4,14 +4,14 @@ T015: POST /api/im/send 单元测试
 测试覆盖：
 - Happy path: 有效请求 → success + short_id
 - 路由头格式: [#ob_xxxxxx ProjectName]\\n\\n<content>
-- fly-pigeon 发送失败 → { success: false, error }，不保存上下文
+- send_reply 发送失败 → { success: false, error }，不保存上下文
 - 缺少必填字段 → 422
 - JWT 鉴权拦截
 - T017: 重复发送同一条消息生成不同 short_id
 """
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -39,7 +39,7 @@ class TestSendToIm:
     async def test_happy_path(self, mock_db_manager):
         body = _make_body()
         with (
-            patch("forward_service.routes.im_send.send_to_wecom", return_value={"errcode": 0}) as mock_send,
+            patch("forward_service.routes.im_send.send_reply", return_value={"success": True, "parts_sent": 1}) as mock_send,
         ):
             result = await send_to_im(body, _user={"service": "test"})
 
@@ -48,12 +48,13 @@ class TestSendToIm:
         assert len(result["short_id"]) == 9
         assert result["message_with_header"].startswith("[#")
         assert body.message_content in result["message_with_header"]
+        assert result["parts_sent"] == 1
         mock_send.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_routing_header_format_with_project(self, mock_db_manager):
         body = _make_body(project_name="TestProj")
-        with patch("forward_service.routes.im_send.send_to_wecom", return_value={"errcode": 0}):
+        with patch("forward_service.routes.im_send.send_reply", return_value={"success": True, "parts_sent": 1}):
             result = await send_to_im(body, _user={"service": "test"})
 
         header_line = result["message_with_header"].split("\n")[0]
@@ -64,7 +65,7 @@ class TestSendToIm:
     @pytest.mark.asyncio
     async def test_routing_header_format_without_project(self, mock_db_manager):
         body = _make_body(project_name=None)
-        with patch("forward_service.routes.im_send.send_to_wecom", return_value={"errcode": 0}):
+        with patch("forward_service.routes.im_send.send_reply", return_value={"success": True, "parts_sent": 1}):
             result = await send_to_im(body, _user={"service": "test"})
 
         header_line = result["message_with_header"].split("\n")[0]
@@ -77,7 +78,7 @@ class TestSendToIm:
     async def test_send_failure_returns_error(self, mock_db_manager):
         body = _make_body()
         with patch(
-            "forward_service.routes.im_send.send_to_wecom",
+            "forward_service.routes.im_send.send_reply",
             side_effect=Exception("network error"),
         ):
             result = await send_to_im(body, _user={"service": "test"})
@@ -86,16 +87,28 @@ class TestSendToIm:
         assert "network error" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_wecom_errcode_nonzero_returns_error(self, mock_db_manager):
+    async def test_send_reply_returns_failure(self, mock_db_manager):
         body = _make_body()
         with patch(
-            "forward_service.routes.im_send.send_to_wecom",
-            return_value={"errcode": 40001, "errmsg": "invalid credential"},
+            "forward_service.routes.im_send.send_reply",
+            return_value={"success": False, "error": "invalid credential"},
         ):
             result = await send_to_im(body, _user={"service": "test"})
 
         assert result["success"] is False
-        assert "40001" in result["error"]
+        assert "invalid credential" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_split_message_returns_parts_sent(self, mock_db_manager):
+        body = _make_body(message_content="A" * 5000)
+        with patch(
+            "forward_service.routes.im_send.send_reply",
+            return_value={"success": True, "parts_sent": 3},
+        ):
+            result = await send_to_im(body, _user={"service": "test"})
+
+        assert result["success"] is True
+        assert result["parts_sent"] == 3
 
     @pytest.mark.asyncio
     async def test_repeated_dispatch_generates_different_ids(self, mock_db_manager):
@@ -103,7 +116,7 @@ class TestSendToIm:
         body = _make_body()
         short_ids = set()
         for _ in range(5):
-            with patch("forward_service.routes.im_send.send_to_wecom", return_value={"errcode": 0}):
+            with patch("forward_service.routes.im_send.send_reply", return_value={"success": True, "parts_sent": 1}):
                 result = await send_to_im(body, _user={"service": "test"})
             assert result["success"] is True
             short_ids.add(result["short_id"])

@@ -52,7 +52,7 @@ async def test_list_async_tasks_filters(mock_db_manager):
 
     app = _make_app()
     with patch.object(auth, "_ADMIN_KEY", ""):
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             r = await client.get("/api/admin/async-tasks?status=PENDING&bot_key=bot-a")
     assert r.status_code == 200
@@ -62,7 +62,7 @@ async def test_list_async_tasks_filters(mock_db_manager):
     assert body["tasks"][0]["task_id"] == "t1"
 
     with patch.object(auth, "_ADMIN_KEY", ""):
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             r2 = await client.get("/api/admin/async-tasks?chat_id=chat-y")
     assert r2.status_code == 200
@@ -96,7 +96,7 @@ async def test_get_async_task_detail_and_404(mock_db_manager):
 
     app = _make_app()
     with patch.object(auth, "_ADMIN_KEY", ""):
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             ok = await client.get("/api/admin/async-tasks/tid99")
             missing = await client.get("/api/admin/async-tasks/nope")
@@ -111,13 +111,13 @@ async def test_admin_key_required_when_configured(mock_db_manager):
 
     app = _make_app()
     with patch.object(auth, "_ADMIN_KEY", "secret-admin"):
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             r = await client.get("/api/admin/async-tasks")
     assert r.status_code == 401
 
     with patch.object(auth, "_ADMIN_KEY", "secret-admin"):
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             r2 = await client.get(
                 "/api/admin/async-tasks",

@@ -94,7 +94,7 @@ async def test_sync_bot_direct_reply_no_async_submit(mock_db_manager):
         sm.record_session = AsyncMock()
         gsm.return_value = sm
 
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             r = await client.post("/callback", json=payload)
 
@@ -168,7 +168,7 @@ async def test_sync_timeout_fallback_submits_async_task(mock_db_manager):
         sm.get_active_session = AsyncMock(return_value=None)
         gsm.return_value = sm
 
-        transport = ASGITransport(app=app, lifespan="off")
+        transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             r = await client.post("/callback", json=payload)
 

@@ -95,10 +95,15 @@ def mock_db_manager():
     # 创建异步上下文管理器
     @asynccontextmanager
     async def mock_get_session():
-        mock_session = AsyncMock()
+        mock_session = MagicMock()
         mock_session.execute = AsyncMock(return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))))
         mock_session.commit = AsyncMock()
         mock_session.flush = AsyncMock()
+        mock_session.refresh = AsyncMock()
+        # SQLAlchemy AsyncSession.add/delete are sync methods
+        mock_session.add = MagicMock()
+        mock_session.delete = MagicMock()
+        mock_session.rollback = AsyncMock()
         yield mock_session
 
     manager.get_session = mock_get_session
