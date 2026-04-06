@@ -1,0 +1,128 @@
+name: Bot CRUD 完整操作测试
+description: 验证 Bot 的创建、查询、更新、删除操作完整流程
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+sequential: true
+
+setup:
+  - name: 预清理 e2e-crud-bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-crud-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+cases:
+  - name: 创建 Bot 成功
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-crud-bot"
+        name: "E2E CRUD 测试机器人"
+        target_url: "http://host.docker.internal:19090/v1/agent/fast"
+        description: "用于 CRUD 测试的机器人"
+        timeout: 30
+    expect:
+      status: 200
+      body:
+        success: true
+        bot:
+          bot_key: "e2e-crud-bot"
+          name: "E2E CRUD 测试机器人"
+          enabled: true
+
+  - name: 查询 Bot 详情
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-crud-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+        bot:
+          bot_key: "e2e-crud-bot"
+          description: "用于 CRUD 测试的机器人"
+          async_config: { exists: true }
+
+  - name: Bot 列表包含新建的 Bot
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: 更新 Bot 信息
+    request:
+      method: PUT
+      url: "{{baseUrl}}/admin/bots/e2e-crud-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        name: "E2E CRUD 测试机器人（已更新）"
+        description: "更新后的描述"
+        enabled: false
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: 验证 Bot 已更新
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-crud-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          name: "E2E CRUD 测试机器人（已更新）"
+          enabled: false
+
+  - name: 查询不存在的 Bot 返回失败
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/nonexistent-bot-xyz-abc"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: false
+
+  - name: 删除 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-crud-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: 删除后查询返回 success false
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-crud-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: false

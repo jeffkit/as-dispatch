@@ -160,7 +160,11 @@ class BotConfig:
         access_control: AccessControl | None = None,
         enabled: bool = True,
         owner_id: str | None = None,
-        _bot: Chatbot | None = None  # 内部使用,保留对数据库模型的引用
+        _bot: Chatbot | None = None,  # 内部使用,保留对数据库模型的引用
+        async_mode: bool = False,
+        processing_message: str | None = None,
+        sync_timeout_seconds: int = 30,
+        max_task_duration_seconds: int = 1800,
     ):
         self.bot_key = bot_key
         self.name = name
@@ -170,6 +174,10 @@ class BotConfig:
         self.enabled = enabled
         self.owner_id = owner_id
         self._bot = _bot  # 保留数据库模型引用
+        self.async_mode = async_mode
+        self.processing_message = processing_message
+        self.sync_timeout_seconds = sync_timeout_seconds
+        self.max_task_duration_seconds = max_task_duration_seconds
 
     @property
     def is_registered(self) -> bool:
@@ -203,7 +211,11 @@ class BotConfig:
             access_control=AccessControl.from_bot(bot),
             enabled=bot.enabled,
             owner_id=bot.owner_id,
-            _bot=bot  # 保留数据库模型引用
+            _bot=bot,
+            async_mode=bool(getattr(bot, "async_mode", False)),
+            processing_message=getattr(bot, "processing_message", None),
+            sync_timeout_seconds=int(getattr(bot, "sync_timeout_seconds", 30)),
+            max_task_duration_seconds=int(getattr(bot, "max_task_duration_seconds", 1800)),
         )
 
 
@@ -228,6 +240,9 @@ class ConfigDB:
         self.timeout: int = DEFAULT_TIMEOUT
         self.callback_auth_key: str = ""
         self.callback_auth_value: str = ""
+        self.async_task_max_concurrency: int = 10
+        self.async_task_default_timeout: int = 1800
+        self.async_task_default_processing_msg: str = "正在为您处理，请稍候..."
 
     async def initialize(self):
         """初始化配置 - 从数据库加载"""
@@ -238,6 +253,11 @@ class ConfigDB:
             self.port = int(os.getenv("FORWARD_PORT"))
         if os.getenv("FORWARD_TIMEOUT"):
             self.timeout = int(os.getenv("FORWARD_TIMEOUT"))
+        self.async_task_max_concurrency = int(os.getenv("ASYNC_TASK_MAX_CONCURRENCY", "10"))
+        self.async_task_default_timeout = int(os.getenv("ASYNC_TASK_DEFAULT_TIMEOUT", "1800"))
+        self.async_task_default_processing_msg = os.getenv(
+            "ASYNC_TASK_DEFAULT_PROCESSING_MSG", "正在为您处理，请稍候..."
+        )
         self.callback_auth_key = os.getenv("CALLBACK_AUTH_KEY", "")
         self.callback_auth_value = os.getenv("CALLBACK_AUTH_VALUE", "")
 
@@ -500,7 +520,13 @@ class ConfigDB:
                     "whitelist_count": len(whitelist),
                     "blacklist_count": len(blacklist),
                     "created_at": bot.created_at.isoformat() if bot.created_at else None,
-                    "updated_at": bot.updated_at.isoformat() if bot.updated_at else None
+                    "updated_at": bot.updated_at.isoformat() if bot.updated_at else None,
+                    "async_config": {
+                        "async_mode": bool(getattr(bot, "async_mode", False)),
+                        "processing_message": getattr(bot, "processing_message", None),
+                        "sync_timeout_seconds": int(getattr(bot, "sync_timeout_seconds", 30)),
+                        "max_task_duration_seconds": int(getattr(bot, "max_task_duration_seconds", 1800)),
+                    },
                 })
 
             return result
@@ -561,7 +587,13 @@ class ConfigDB:
                         "remark": rule.remark or ""
                     }
                     for rule in blacklist_rules
-                ]
+                ],
+                "async_config": {
+                    "async_mode": bool(getattr(bot, "async_mode", False)),
+                    "processing_message": getattr(bot, "processing_message", None),
+                    "sync_timeout_seconds": int(getattr(bot, "sync_timeout_seconds", 30)),
+                    "max_task_duration_seconds": int(getattr(bot, "max_task_duration_seconds", 1800)),
+                },
             }
 
     async def get_bot_or_default_from_db(self, bot_key: str | None) -> Optional[BotConfig]:
@@ -642,10 +674,12 @@ class ConfigDB:
                     return {"success": False, "error": f"Bot Key '{data['bot_key']}' 已存在"}
 
                 # 创建 Bot（target_url 可选）
+                eff_target = data.get("target_url") or data.get("url_template") or ""
                 bot = await bot_repo.create(
                     bot_key=data["bot_key"],
                     name=data["name"],
-                    target_url=data.get("target_url", ""),
+                    target_url=eff_target,
+                    url_template=data.get("url_template", ""),
                     api_key=data.get("api_key", ""),
                     timeout=data.get("timeout", DEFAULT_TIMEOUT),
                     access_mode=data.get("access_mode", "allow_all"),
@@ -654,6 +688,10 @@ class ConfigDB:
                     platform=data.get("platform", "wecom"),
                     owner_id=data.get("owner_id"),
                     platform_config=data.get("platform_config"),
+                    async_mode=data.get("async_mode", False),
+                    processing_message=data.get("processing_message"),
+                    sync_timeout_seconds=data.get("sync_timeout_seconds", 30),
+                    max_task_duration_seconds=data.get("max_task_duration_seconds", DEFAULT_TIMEOUT),
                 )
 
                 # 创建访问规则
@@ -719,6 +757,10 @@ class ConfigDB:
                     access_mode=data.get("access_mode"),
                     enabled=data.get("enabled"),
                     platform_config=data.get("platform_config"),
+                    async_mode=data.get("async_mode"),
+                    processing_message=data.get("processing_message"),
+                    sync_timeout_seconds=data.get("sync_timeout_seconds"),
+                    max_task_duration_seconds=data.get("max_task_duration_seconds"),
                 )
 
                 # 更新访问规则 (如果提供)

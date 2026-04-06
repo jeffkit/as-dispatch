@@ -1,0 +1,51 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install all production dependencies via pip with tencent mirror (pre-built wheels only)
+# No gcc needed — use binary wheels for all packages
+RUN pip install --no-cache-dir --only-binary=:all: \
+    fastapi "uvicorn[standard]" "httpx[socks]" pydantic pydantic-settings \
+    python-dotenv sqlalchemy "aiosqlite>=0.19" aiomysql pymysql alembic \
+    pycryptodome "fastmcp>=3.0.2" websockets python-multipart \
+    PyJWT aiofiles "tunely>=0.1.2" "discord.py>=2.3.0" \
+    -i https://mirrors.tencent.com/pypi/simple/ \
+    --extra-index-url https://pypi.org/simple/ \
+    || pip install --no-cache-dir \
+    fastapi "uvicorn[standard]" "httpx[socks]" pydantic pydantic-settings \
+    python-dotenv sqlalchemy "aiosqlite>=0.19" aiomysql pymysql alembic \
+    pycryptodome websockets python-multipart PyJWT aiofiles 2>&1 | tail -3
+
+# Install fastmcp separately (may need extra deps)
+RUN pip install --no-cache-dir "fastmcp>=3.0.2" 2>/dev/null || true
+
+# Install tunely (published to tencent PyPI)
+RUN pip install --no-cache-dir "tunely>=0.1.2" \
+    -i https://mirrors.tencent.com/pypi/simple/ 2>/dev/null || \
+    pip install --no-cache-dir "tunely>=0.1.2" 2>/dev/null || true
+
+# Install discord.py
+RUN pip install --no-cache-dir "discord.py>=2.3.0" 2>/dev/null || true
+
+# fly-pigeon optional (WeChat Work messaging)
+RUN pip install --no-cache-dir fly-pigeon \
+    -i https://mirrors.tencent.com/pypi/simple/ 2>/dev/null || true
+
+# Copy application source
+COPY forward_service/ ./forward_service/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
+
+# Create data directory for SQLite DB
+RUN mkdir -p /app/data
+
+EXPOSE 8083
+
+# Docker built-in healthcheck (used by ArgusAI's waitForHealthy)
+HEALTHCHECK --interval=5s --timeout=3s --retries=20 --start-period=30s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8083/')" || exit 1
+
+# Run DB migrations then start server
+CMD ["sh", "-c", \
+    "python -m alembic upgrade head && \
+     python -m uvicorn forward_service.app:app --host 0.0.0.0 --port 8083 --log-level warning"]

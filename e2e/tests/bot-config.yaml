@@ -1,0 +1,111 @@
+name: Bot 配置 API 异步字段测试
+description: 验证 Bot 创建/查询 API 支持异步模式字段
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+setup:
+  - name: 清理同名 Bot e2e-async-bot（忽略错误）
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-async-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+  - name: 清理同名 Bot e2e-sync-bot（忽略错误）
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+cases:
+  - name: 创建异步模式 Bot
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-async-bot"
+        name: "E2E 异步测试机器人"
+        target_url: "http://localhost:19090/api/a2a/test-agent/messages"
+        async_mode: true
+        processing_message: "正在为您处理，请稍候..."
+        sync_timeout_seconds: 10
+        max_task_duration_seconds: 300
+    expect:
+      status: 200
+      body:
+        success: true
+        bot:
+          bot_key: "e2e-async-bot"
+          async_config:
+            async_mode: true
+
+  - name: 查询 Bot 包含异步配置字段
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-async-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+        bot:
+          bot_key: "e2e-async-bot"
+          async_config:
+            async_mode: true
+            processing_message: "正在为您处理，请稍候..."
+            sync_timeout_seconds: 10
+            max_task_duration_seconds: 300
+
+  - name: 创建同步模式 Bot（默认）
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-sync-bot"
+        name: "E2E 同步测试机器人"
+        target_url: "http://localhost:19090/api/a2a/test-agent/messages"
+        async_mode: false
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: 同步 Bot 的 async_config.async_mode 应为 false
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-sync-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          async_config:
+            async_mode: false
+
+teardown:
+  - name: 删除测试 Bot e2e-async-bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-async-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+  - name: 删除测试 Bot e2e-sync-bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true

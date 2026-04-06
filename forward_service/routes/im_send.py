@@ -3,12 +3,11 @@
 
 POST /api/im/send — 将消息发送到 IM 通道（企微群），
 生成 outbound_short_id 路由头，保存上下文用于回复路由。
+发送复用 send_reply（支持超长消息自动分拆，且每条都带相同 short_id）。
 
 鉴权：使用 as-enterprise JWT Token。
 """
-import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -17,7 +16,8 @@ from pydantic import BaseModel
 from ..auth import require_enterprise_jwt
 from ..database import get_db_manager
 from ..repository import get_outbound_context_repository
-from ..sender import send_to_wecom
+from ..message_splitter import create_message_header
+from ..sender import send_reply
 from ..utils.short_id import generate_unique_outbound_short_id
 
 logger = logging.getLogger(__name__)
@@ -45,14 +45,14 @@ async def send_to_im(
 
     流程：
     1. 生成 ob_xxxxxx outbound_short_id
-    2. 注入路由头 [#ob_xxxxxx ProjectName] 到消息开头
-    3. 通过 fly-pigeon (send_to_wecom) 发送到企微群
-    4. 发送成功后保存 OutboundMessageContext
-    5. 返回 short_id 和完整消息
+    2. 通过 send_reply 发送（自动注入 [#short_id]，必要时自动分拆）
+    3. 发送成功后保存 OutboundMessageContext
+    4. 返回 short_id 和完整消息头预览
     """
+    session_preview = body.session_id[:8] if body.session_id else "None"
     logger.info(
         f"收到出站消息发送请求: bot_key={body.bot_key[:10]}..., "
-        f"chat_id={body.chat_id[:10]}..., session_id={body.session_id[:8]}..."
+        f"chat_id={body.chat_id[:10]}..., session_id={session_preview}..."
     )
 
     # 1. 生成唯一 outbound short_id
@@ -70,34 +70,31 @@ async def send_to_im(
         logger.error(f"生成 outbound short_id 失败: {e}")
         return {"success": False, "error": str(e)}
 
-    # 2. 注入路由头
-    project_label = body.project_name or ""
-    routing_header = f"[#{short_id} {project_label}]".rstrip() if project_label else f"[#{short_id}]"
-    message_with_header = f"{routing_header}\n\n{body.message_content}"
-
-    # 3. 通过 fly-pigeon 发送（同步函数，用 run_in_executor 包装）
-    loop = asyncio.get_event_loop()
+    # 2. 使用 send_reply 发送（支持自动分拆，且每段保留同一 short_id）
+    project_label = body.project_name or None
+    routing_header = create_message_header(short_id, project_label, 1, 1)
+    message_with_header = f"{routing_header}\n{body.message_content}"
     try:
-        send_result = await loop.run_in_executor(
-            None,
-            lambda: send_to_wecom(
-                message=message_with_header,
-                chat_id=body.chat_id,
-                msg_type=body.msg_type or "text",
-                bot_key=body.bot_key,
-            ),
+        send_result = await send_reply(
+            chat_id=body.chat_id,
+            message=body.message_content,
+            msg_type=body.msg_type or "text",
+            bot_key=body.bot_key,
+            short_id=short_id,
+            project_name=project_label,
         )
     except Exception as e:
-        logger.error(f"fly-pigeon 发送失败: {e}", exc_info=True)
-        return {"success": False, "error": f"fly-pigeon 发送失败: {e}"}
+        logger.error(f"send_reply 发送失败: {e}", exc_info=True)
+        return {"success": False, "error": f"send_reply 发送失败: {e}"}
 
-    # 检查 fly-pigeon 返回结果
-    if isinstance(send_result, dict) and send_result.get("errcode", 0) != 0:
-        error_msg = f"企微发送失败: errcode={send_result.get('errcode')}, errmsg={send_result.get('errmsg')}"
-        logger.error(error_msg)
+    if not send_result.get("success"):
+        error_msg = str(send_result.get("error") or "IM 发送失败")
+        logger.error(f"send_reply 返回失败: {error_msg}")
         return {"success": False, "error": error_msg}
 
-    # 4. 发送成功，保存 OutboundMessageContext
+    parts_sent = int(send_result.get("parts_sent", 0) or 0)
+
+    # 3. 发送成功，保存 OutboundMessageContext
     try:
         async with db_manager.get_session() as session:
             repo = get_outbound_context_repository(session)
@@ -106,18 +103,22 @@ async def send_to_im(
                 bot_key=body.bot_key,
                 chat_id=body.chat_id,
                 agent_id=body.agent_id,
-                session_id=body.session_id,
+                session_id=body.session_id or None,
                 content_preview=body.message_content[:200],
                 project_name=body.project_name,
             )
             await session.commit()
-        logger.info(f"出站消息上下文已保存: short_id={short_id}, session_id={body.session_id[:8]}...")
+        logger.info(
+            f"出站消息上下文已保存: short_id={short_id}, "
+            f"session_id={session_preview}..., parts_sent={parts_sent}"
+        )
     except Exception as e:
         logger.error(f"保存出站消息上下文失败（消息已发送）: {e}", exc_info=True)
 
-    # 5. 返回结果
+    # 4. 返回结果
     return {
         "success": True,
         "short_id": short_id,
         "message_with_header": message_with_header,
+        "parts_sent": parts_sent,
     }

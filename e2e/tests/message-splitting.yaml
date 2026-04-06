@@ -1,0 +1,83 @@
+name: 消息分割功能测试
+description: 验证 utils/message_splitter.py 正确分割超长消息
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+sequential: true
+
+setup:
+  - name: 清理已有 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-split-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+  - name: 创建异步 Bot（指向长消息 Mock Agent）
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-split-bot"
+        name: "E2E 消息分割测试机器人"
+        target_url: "http://host.docker.internal:19090/v1/agent/long"
+        async_mode: true
+        processing_message: "正在生成长文档..."
+        max_task_duration_seconds: 60
+    expect:
+      status: 200
+
+cases:
+  - name: 长消息回调在 3 秒内返回 ACK
+    request:
+      method: POST
+      url: "{{baseUrl}}/callback"
+      headers:
+        Content-Type: application/json
+      body:
+        chatid: "e2e-split-chat-001"
+        chattype: "group"
+        msgtype: "text"
+        msgid: "e2e-split-msg-001"
+        from:
+          userid: "split-user"
+          name: "分割测试用户"
+          alias: "splituser"
+        webhook_url: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e2e-split-bot"
+        get_chat_info_url: "http://host.docker.internal:19091/chatinfo"
+        text:
+          content: "请给我一段超长的文档"
+      timeout: "5s"
+    expect:
+      status: 200
+      responseTime:
+        lt: 3000
+      body:
+        errcode: 0
+
+  - name: 长消息任务已提交到 DB
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-split-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+        tasks: { exists: true }
+
+teardown:
+  - name: 删除测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-split-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true

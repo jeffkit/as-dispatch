@@ -9,7 +9,17 @@ from typing import Optional, List
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import Chatbot, ChatAccessRule, ForwardLog, SystemConfig, UserProjectConfig, ChatInfo, ProcessingSession, OutboundMessageContext
+from .models import (
+    Chatbot,
+    ChatAccessRule,
+    ForwardLog,
+    SystemConfig,
+    UserProjectConfig,
+    ChatInfo,
+    ProcessingSession,
+    OutboundMessageContext,
+    AsyncAgentTask,
+)
 from .database import get_db_manager
 
 logger = logging.getLogger(__name__)
@@ -51,6 +61,10 @@ class ChatbotRepository:
         platform: str = "wecom",
         owner_id: str | None = None,
         platform_config: dict | None = None,
+        async_mode: bool = False,
+        processing_message: str | None = None,
+        sync_timeout_seconds: int = 30,
+        max_task_duration_seconds: int = 1800,
     ) -> Chatbot:
         """
         创建新的 Bot 配置
@@ -86,6 +100,10 @@ class ChatbotRepository:
             enabled=enabled,
             platform=platform,
             owner_id=owner_id,
+            async_mode=async_mode,
+            processing_message=processing_message,
+            sync_timeout_seconds=sync_timeout_seconds,
+            max_task_duration_seconds=max_task_duration_seconds,
         )
         if platform_config:
             bot.set_platform_config(platform_config)
@@ -166,6 +184,10 @@ class ChatbotRepository:
         enabled: bool | None = None,
         owner_id: str | None = _UNSET,
         platform_config: dict | None = None,
+        async_mode: bool | None = None,
+        processing_message: str | None = None,
+        sync_timeout_seconds: int | None = None,
+        max_task_duration_seconds: int | None = None,
     ) -> Optional[Chatbot]:
         """
         更新 Bot 配置
@@ -212,6 +234,14 @@ class ChatbotRepository:
         if platform_config is not None:
             import json
             update_data["platform_config"] = json.dumps(platform_config, ensure_ascii=False)
+        if async_mode is not None:
+            update_data["async_mode"] = async_mode
+        if processing_message is not None:
+            update_data["processing_message"] = processing_message
+        if sync_timeout_seconds is not None:
+            update_data["sync_timeout_seconds"] = sync_timeout_seconds
+        if max_task_duration_seconds is not None:
+            update_data["max_task_duration_seconds"] = max_task_duration_seconds
 
         if not update_data:
             return await self.get_by_id(bot_id)
@@ -1575,3 +1605,123 @@ class OutboundMessageContextRepository:
 def get_outbound_context_repository(session: AsyncSession) -> OutboundMessageContextRepository:
     """获取 OutboundMessageContextRepository 实例"""
     return OutboundMessageContextRepository(session)
+
+
+# ============== AsyncAgentTask Repository ==============
+
+
+class AsyncTaskRepository:
+    """async_agent_tasks 表访问（异步任务持久化）"""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self, task: AsyncAgentTask) -> AsyncAgentTask:
+        self.session.add(task)
+        await self.session.flush()
+        await self.session.refresh(task)
+        return task
+
+    async def get_by_task_id(self, task_id: str) -> AsyncAgentTask | None:
+        stmt = select(AsyncAgentTask).where(AsyncAgentTask.task_id == task_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_status(self, statuses: list[str]) -> list[AsyncAgentTask]:
+        if not statuses:
+            return []
+        stmt = (
+            select(AsyncAgentTask)
+            .where(AsyncAgentTask.status.in_(statuses))
+            .order_by(AsyncAgentTask.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_active_by_chat(self, chat_id: str, bot_key: str) -> list[AsyncAgentTask]:
+        stmt = (
+            select(AsyncAgentTask)
+            .where(
+                AsyncAgentTask.chat_id == chat_id,
+                AsyncAgentTask.bot_key == bot_key,
+                AsyncAgentTask.status.in_(["PENDING", "PROCESSING"]),
+            )
+            .order_by(AsyncAgentTask.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def update_status(
+        self,
+        task_id: str,
+        status: str,
+        *,
+        started_at: object = _UNSET,
+        completed_at: object = _UNSET,
+        response_text: object = _UNSET,
+        new_session_id: object = _UNSET,
+        error_message: object = _UNSET,
+        retry_count: object = _UNSET,
+    ) -> None:
+        task = await self.get_by_task_id(task_id)
+        if not task:
+            logger.warning(f"AsyncTaskRepository.update_status: 未找到 task_id={task_id}")
+            return
+        task.status = status
+        if started_at is not _UNSET:
+            task.started_at = started_at  # type: ignore[assignment]
+        if completed_at is not _UNSET:
+            task.completed_at = completed_at  # type: ignore[assignment]
+        if response_text is not _UNSET:
+            task.response_text = response_text  # type: ignore[assignment]
+        if new_session_id is not _UNSET:
+            task.new_session_id = new_session_id  # type: ignore[assignment]
+        if error_message is not _UNSET:
+            task.error_message = error_message  # type: ignore[assignment]
+        if retry_count is not _UNSET:
+            task.retry_count = retry_count  # type: ignore[assignment]
+        await self.session.flush()
+
+    async def increment_retry(self, task_id: str) -> int:
+        task = await self.get_by_task_id(task_id)
+        if not task:
+            return -1
+        task.retry_count = int(task.retry_count or 0) + 1
+        await self.session.flush()
+        return task.retry_count
+
+    async def list_for_admin(
+        self,
+        bot_key: str | None = None,
+        status: str | None = None,
+        chat_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[AsyncAgentTask]:
+        stmt = select(AsyncAgentTask)
+        if bot_key:
+            stmt = stmt.where(AsyncAgentTask.bot_key == bot_key)
+        if status:
+            stmt = stmt.where(AsyncAgentTask.status == status)
+        if chat_id:
+            stmt = stmt.where(AsyncAgentTask.chat_id == chat_id)
+        stmt = stmt.order_by(AsyncAgentTask.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def cleanup_old_completed(self, older_than_days: int = 30) -> int:
+        from datetime import timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        stmt = delete(AsyncAgentTask).where(
+            AsyncAgentTask.status.in_(["COMPLETED", "FAILED", "TIMEOUT"]),
+            AsyncAgentTask.completed_at.is_not(None),
+            AsyncAgentTask.completed_at < cutoff,
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return int(result.rowcount or 0)
+
+
+def get_async_task_repository(session: AsyncSession) -> AsyncTaskRepository:
+    return AsyncTaskRepository(session)

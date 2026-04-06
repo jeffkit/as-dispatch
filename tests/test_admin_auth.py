@@ -228,7 +228,7 @@ async def test_create_bot_without_owner_id_is_null(initialized_app, mock_db_mana
         assert bot.owner_id is None
 
 
-# ============== AS_ADMIN_KEY 未配置时返回 503 ==============
+# ============== AS_ADMIN_KEY 未配置时跳过鉴权 ==============
 
 @pytest.mark.asyncio
 async def test_admin_skips_auth_when_key_not_configured(initialized_app):
