@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 from .config import config
 from .message_splitter import (
+    create_message_header,
     split_and_format_message,
     needs_split,
 )
@@ -145,10 +146,16 @@ async def send_reply(
                 project_name=project_name,
                 mentioned_list=mentioned_list,
             )
-        
-        # 不需要分拆，使用原有逻辑
+
+        # 单条发送：与分拆路径一致，带上 [#short_id] 头，便于企微引用回复路由会话
+        outgoing = message
+        if short_id:
+            header = create_message_header(short_id, project_name, 1, 1)
+            if header:
+                outgoing = f"{header}\n{message}"
+
         result = send_to_wecom(
-            message=message,
+            message=outgoing,
             chat_id=chat_id,
             msg_type=msg_type,
             bot_key=bot_key,

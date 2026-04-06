@@ -268,3 +268,26 @@ class TestSendReply:
                 bot_key=None,
                 mentioned_list=None,
             )
+
+    @pytest.mark.asyncio
+    async def test_send_reply_prepends_header_when_short_id(self):
+        """有 short_id 且不需分拆时，正文前应带 [#short_id] 头（与分拆路径一致）"""
+        from forward_service.sender import send_reply
+
+        with patch('forward_service.sender.send_to_wecom') as mock_send:
+            mock_send.return_value = {"errcode": 0}
+
+            await send_reply(
+                chat_id="test_chat",
+                message="Agent 回复正文",
+                msg_type="markdown_v2",
+                bot_key="test_key",
+                short_id="a1b2c3d4",
+                project_name="ProjA",
+            )
+
+            mock_send.assert_called_once()
+            call_kw = mock_send.call_args.kwargs
+            assert call_kw["message"].startswith("[#a1b2c3d4 ProjA]\n")
+            assert "Agent 回复正文" in call_kw["message"]
+            assert call_kw["msg_type"] == "markdown_v2"
