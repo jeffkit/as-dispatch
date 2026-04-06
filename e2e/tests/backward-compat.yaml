@@ -1,0 +1,104 @@
+name: SC-006 同步模式向后兼容测试
+description: "验证 async_mode=False 的 Bot 行为完全不受影响"
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+sequential: true
+
+setup:
+  - name: 清理已有 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+  - name: 创建同步 Bot（默认 async_mode=false）
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-sync-compat-bot"
+        name: "E2E 同步兼容测试机器人"
+        target_url: "http://host.docker.internal:19090/v1/agent/fast"
+        async_mode: false
+    expect:
+      status: 200
+
+cases:
+  - name: "SC-006: 同步 Bot async_mode 为 false"
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          async_config:
+            async_mode: false
+
+  - name: "SC-006: 同步 Bot 不会产生异步任务"
+    request:
+      method: GET
+      url: "{{baseUrl}}/api/admin/async-tasks?bot_key=e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        tasks:
+          length: 0
+
+  - name: 禁用 Bot 后不响应消息
+    request:
+      method: PUT
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        enabled: false
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: 验证 Bot 已被禁用
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          enabled: false
+
+  - name: Bot 列表 API 正常返回
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        success: true
+
+teardown:
+  - name: 删除测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-compat-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true

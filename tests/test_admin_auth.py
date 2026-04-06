@@ -228,11 +228,11 @@ async def test_create_bot_without_owner_id_is_null(initialized_app, mock_db_mana
         assert bot.owner_id is None
 
 
-# ============== AS_ADMIN_KEY 未配置时返回 503 ==============
+# ============== AS_ADMIN_KEY 未配置时跳过鉴权 ==============
 
 @pytest.mark.asyncio
-async def test_admin_returns_503_when_key_not_configured(initialized_app):
-    """AS_ADMIN_KEY 为空时，所有 admin 路由返回 503"""
+async def test_admin_skips_auth_when_key_not_configured(initialized_app):
+    """AS_ADMIN_KEY 为空时，跳过鉴权（内网模式），直接放行"""
     with patch("forward_service.auth._ADMIN_KEY", ""):
         transport = ASGITransport(app=initialized_app)
         async with AsyncClient(
@@ -241,4 +241,4 @@ async def test_admin_returns_503_when_key_not_configured(initialized_app):
             headers={"X-Admin-Key": "any-key"},
         ) as client:
             response = await client.get("/admin/bots")
-    assert response.status_code == 503
+    assert response.status_code == 200

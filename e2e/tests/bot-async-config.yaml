@@ -1,0 +1,128 @@
+name: Bot 异步字段配置测试
+description: 验证 Bot 的 async_mode / processing_message 等异步配置字段
+
+variables:
+  baseUrl: "http://localhost:18083"
+  adminKey: "e2e-test-key"
+
+sequential: true
+
+setup:
+  - name: 清理测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-async-cfg-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+  - name: 清理同步测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-cfg-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+
+cases:
+  - name: 创建异步模式 Bot（含全部异步字段）
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-async-cfg-bot"
+        name: "E2E 异步配置测试机器人"
+        target_url: "http://host.docker.internal:19090/v1/agent/fast"
+        async_mode: true
+        processing_message: "正在为您处理，请稍候..."
+        sync_timeout_seconds: 10
+        max_task_duration_seconds: 300
+    expect:
+      status: 200
+      body:
+        success: true
+        bot:
+          async_config:
+            async_mode: true
+            processing_message: "正在为您处理，请稍候..."
+            sync_timeout_seconds: 10
+            max_task_duration_seconds: 300
+
+  - name: 查询异步 Bot 的 async_config 字段完整
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-async-cfg-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          bot_key: "e2e-async-cfg-bot"
+          async_config:
+            async_mode: true
+            sync_timeout_seconds: 10
+            max_task_duration_seconds: 300
+
+  - name: 动态更新 async_mode 为 false
+    request:
+      method: PUT
+      url: "{{baseUrl}}/admin/bots/e2e-async-cfg-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        async_mode: false
+    expect:
+      status: 200
+      body:
+        success: true
+
+  - name: 验证 async_mode 已关闭
+    request:
+      method: GET
+      url: "{{baseUrl}}/admin/bots/e2e-async-cfg-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    expect:
+      status: 200
+      body:
+        bot:
+          async_config:
+            async_mode: false
+
+  - name: 创建未指定 async_mode 的 Bot（默认为 false）
+    request:
+      method: POST
+      url: "{{baseUrl}}/admin/bots"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+        Content-Type: application/json
+      body:
+        bot_key: "e2e-sync-cfg-bot"
+        name: "E2E 同步默认 Bot"
+        target_url: "http://host.docker.internal:19090/v1/agent/fast"
+    expect:
+      status: 200
+      body:
+        bot:
+          async_config:
+            async_mode: false
+
+teardown:
+  - name: 清理异步测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-async-cfg-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
+  - name: 清理同步测试 Bot
+    request:
+      method: DELETE
+      url: "{{baseUrl}}/admin/bots/e2e-sync-cfg-bot"
+      headers:
+        X-Admin-Key: "{{adminKey}}"
+    ignoreError: true
