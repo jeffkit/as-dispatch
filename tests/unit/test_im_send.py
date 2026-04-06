@@ -50,6 +50,7 @@ class TestSendToIm:
         assert body.message_content in result["message_with_header"]
         assert result["parts_sent"] == 1
         mock_send.assert_called_once()
+        assert mock_send.call_args.kwargs.get("msg_type") == "markdown_v2"
 
     @pytest.mark.asyncio
     async def test_routing_header_format_with_project(self, mock_db_manager):

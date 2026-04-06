@@ -4,6 +4,7 @@
 POST /api/im/send — 将消息发送到 IM 通道（企微群），
 生成 outbound_short_id 路由头，保存上下文用于回复路由。
 发送复用 send_reply（支持超长消息自动分拆，且每条都带相同 short_id）。
+默认 msg_type 为 markdown_v2，与 Agent 回调回贴一致；可显式传 text / markdown。
 
 鉴权：使用 as-enterprise JWT Token。
 """
@@ -32,7 +33,7 @@ class DispatchRequest(BaseModel):
     session_id: str
     agent_id: Optional[str] = None
     project_name: Optional[str] = None
-    msg_type: Optional[str] = "text"
+    msg_type: Optional[str] = "markdown_v2"
 
 
 @router.post("/send")
@@ -78,7 +79,7 @@ async def send_to_im(
         send_result = await send_reply(
             chat_id=body.chat_id,
             message=body.message_content,
-            msg_type=body.msg_type or "text",
+            msg_type=body.msg_type or "markdown_v2",
             bot_key=body.bot_key,
             short_id=short_id,
             project_name=project_label,
